@@ -179,7 +179,11 @@ impl FsProvider {
         Ok(json!({"path": relative, "text": text, "bytes": metadata.len()}))
     }
 
-    pub fn preview_write(&self, relative: &str, content: &str) -> Result<WritePreview, ProviderError> {
+    pub fn preview_write(
+        &self,
+        relative: &str,
+        content: &str,
+    ) -> Result<WritePreview, ProviderError> {
         if content.len() > MAX_WRITE_BYTES {
             return Err(ProviderError::new(
                 FailureCode::OutputLimit,
@@ -614,12 +618,7 @@ mod win {
             flags: u32,
             template: Handle,
         ) -> Handle;
-        fn GetFinalPathNameByHandleW(
-            file: Handle,
-            path: *mut u16,
-            size: u32,
-            flags: u32,
-        ) -> u32;
+        fn GetFinalPathNameByHandleW(file: Handle, path: *mut u16, size: u32, flags: u32) -> u32;
         fn CloseHandle(handle: Handle) -> i32;
     }
 
@@ -658,9 +657,8 @@ mod win {
 
     pub fn final_path_from_handle(handle: RawHandle) -> io::Result<PathBuf> {
         let handle = handle as Handle;
-        let required = unsafe {
-            GetFinalPathNameByHandleW(handle, std::ptr::null_mut(), 0, VOLUME_NAME_DOS)
-        };
+        let required =
+            unsafe { GetFinalPathNameByHandleW(handle, std::ptr::null_mut(), 0, VOLUME_NAME_DOS) };
         if required == 0 {
             return Err(io::Error::last_os_error());
         }
@@ -711,12 +709,7 @@ mod tests {
         let provider = FsProvider::new(&root).unwrap();
         let preview = provider.preview_write("a.txt", "new").unwrap();
         let result = provider
-            .write_text(
-                "a.txt",
-                "new",
-                preview.current_sha256.as_deref(),
-                false,
-            )
+            .write_text("a.txt", "new", preview.current_sha256.as_deref(), false)
             .unwrap();
         assert_eq!(result["created"], false);
         assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "new");
@@ -731,12 +724,7 @@ mod tests {
         let preview = provider.preview_write("a.txt", "new").unwrap();
         fs::write(root.join("a.txt"), "changed").unwrap();
         let error = provider
-            .write_text(
-                "a.txt",
-                "new",
-                preview.current_sha256.as_deref(),
-                false,
-            )
+            .write_text("a.txt", "new", preview.current_sha256.as_deref(), false)
             .unwrap_err();
         assert_eq!(error.code, FailureCode::TargetStale);
         assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "changed");
@@ -749,9 +737,7 @@ mod tests {
         let provider = FsProvider::new(&root).unwrap();
         let preview = provider.preview_write("new.txt", "hello").unwrap();
         assert!(!preview.exists);
-        provider
-            .write_text("new.txt", "hello", None, true)
-            .unwrap();
+        provider.write_text("new.txt", "hello", None, true).unwrap();
         assert_eq!(fs::read_to_string(root.join("new.txt")).unwrap(), "hello");
         let _ = fs::remove_dir_all(root);
     }
