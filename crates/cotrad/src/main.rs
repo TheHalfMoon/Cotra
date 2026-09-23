@@ -246,7 +246,7 @@ fn dispatch(
                     "{} bytes; new SHA-256 {}",
                     preview.bytes, preview.new_sha256
                 ),
-                digest: preview.approval_digest(),
+                digest: preview.approval_digest(&workspace.id, POLICY_REVISION),
             };
 
             match approval.request(&prompt) {
