@@ -65,3 +65,15 @@ Cotra is not intended to be:
 
 Architecture, source provenance, security controls, and implementation slices are planned before privileged implementation begins. Work is intended to use bounded SpecGrain work packets, exact-diff review discipline, independent review, and explicit evidence gates.
 
+
+
+## Planning documents
+
+- [Canonical architecture and delivery plan](docs/canonical/ARCHITECTURE_AND_DELIVERY_PLAN.md)
+- [Current canonical frontier](docs/canonical/CURRENT.md)
+- [Threat model](docs/security/THREAT_MODEL.md)
+- [Source ledger](docs/research/SOURCE_LEDGER.md)
+- [Diffcipline](docs/governance/DIFFCIPLINE.md)
+- [First SpecGrain](.specgrain/specs/SG-000001.json)
+
+The first authorized implementation slice after planning acceptance is a read-only MCP-to-policy-to-workspace path. Privileged write, execution, browser, and desktop-control authority are staged behind later proof gates.

@@ -1,0 +1,114 @@
+{
+  "id": "SG-000001",
+  "title": "Trusted read-only MCP path and policy skeleton",
+  "program": "COTRA-P01/P02/P03",
+  "state": "GRAIN",
+  "risk": "high",
+  "created": "2026-09-23",
+  "base": "7de4779682b9e8dc794d6c675d7ed6c420355d13",
+  "dependencies": [],
+  "objective": "Establish the first end-to-end Cotra path from MCP request to local policy to a read-only Windows workspace provider without mutation, shell execution, browser control, or UI input authority.",
+  "scope": {
+    "include": [
+      "Monorepo skeleton for TypeScript MCP edge and Rust authority crates",
+      "Versioned internal request/response contracts",
+      "Capability/effect taxonomy",
+      "Workspace identity and root configuration",
+      "Deny-by-default policy skeleton",
+      "Typed failure model",
+      "Read-only system.status",
+      "Read-only workspace metadata",
+      "Read-only fs.stat, fs.list, fs.read, fs.search",
+      "Read-only git.status, git.diff, git.log if repository support fits the packet",
+      "Structured local audit events",
+      "OpenAI Secure MCP Tunnel development wiring or documented E2E harness",
+      "Windows-native path escape tests"
+    ],
+    "exclude": [
+      "File mutation",
+      "Process execution",
+      "PowerShell execution",
+      "Git mutation",
+      "Browser automation",
+      "Clipboard",
+      "Windows UI Automation",
+      "Mouse or keyboard injection",
+      "Elevation",
+      "Public MCP hosting",
+      "Donor code import"
+    ]
+  },
+  "authority_delta": {
+    "filesystem": "Read-only inside explicitly trusted workspace roots",
+    "process": "None",
+    "network": "Only transport required for the configured Secure MCP Tunnel E2E path",
+    "browser": "None",
+    "ui_input": "None",
+    "secrets": "Tunnel credential handling only; never exposed to tools",
+    "approval": "No state-changing approval flow in this grain",
+    "privileged": "None"
+  },
+  "invariants": [
+    "Unknown capabilities fail closed",
+    "A request cannot access a path outside the trusted workspace after final Windows path resolution",
+    "Reparse-point escape is denied",
+    "MCP tool annotations cannot widen local authorization",
+    "No tunnel credential is returned, logged, or inherited by unrelated processes",
+    "Every successful read records policy/evidence metadata without raw secret values",
+    "No write/execute/browser/UI capability is accidentally exposed"
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "claim": "cotra-mcp can enumerate only the intended read-only tools and translate them into versioned internal requests."
+    },
+    {
+      "id": "A2",
+      "claim": "cotrad denies unknown and out-of-scope capabilities by default."
+    },
+    {
+      "id": "A3",
+      "claim": "A trusted temporary workspace can be listed, searched, and read from Windows."
+    },
+    {
+      "id": "A4",
+      "claim": "Symlink/junction/reparse-point attempts that resolve outside the trusted root fail closed."
+    },
+    {
+      "id": "A5",
+      "claim": "A path outside the trusted workspace cannot be read through spelling, case, device, relative, or alias tricks covered by the test corpus."
+    },
+    {
+      "id": "A6",
+      "claim": "Read operations create structured audit events with request/session/workspace/capability/policy/result fields."
+    },
+    {
+      "id": "A7",
+      "claim": "Tunnel development flow demonstrates private local reachability without an inbound public Cotra listener, or remains explicitly UNPROVEN if product access is unavailable."
+    },
+    {
+      "id": "A8",
+      "claim": "Windows-native CI or qualification is green for Windows-specific path/security claims."
+    }
+  ],
+  "required_tests": [
+    "contract schema tests",
+    "unknown capability denial",
+    "workspace path denial",
+    "junction escape",
+    "symlink escape where supported",
+    "parent/reparse manipulation corpus",
+    "large read/search bounds",
+    "secret redaction seed",
+    "tunnel credential environment leak test",
+    "Windows native integration test"
+  ],
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": true,
+    "security_review": true,
+    "exact_head_ci": true
+  },
+  "done_when": "All acceptance claims are evidenced on the exact implementation head, the bounded PR is merged under governance, and post-merge canonical state is verified."
+}
