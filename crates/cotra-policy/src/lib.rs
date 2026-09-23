@@ -143,10 +143,9 @@ pub fn validate_relative_target(target: &str) -> Result<(), PolicyError> {
     let portable = target.replace('/', "\\");
     let bytes = portable.as_bytes();
     let drive_prefixed = bytes.len() >= 2 && bytes[1] == b':';
-    let device_prefixed = portable.starts_with("\\\\")
-        || portable.starts_with("\\?\\")
-        || portable.starts_with("\\.\\");
-    if drive_prefixed || device_prefixed || target.starts_with('/') {
+    let root_prefixed = portable.starts_with('\\');
+    let device_prefixed = portable.starts_with("\\\\?\\") || portable.starts_with("\\\\.\\");
+    if drive_prefixed || root_prefixed || device_prefixed {
         return Err(PolicyError::new(
             FailureCode::PathEscape,
             "absolute, UNC, or device paths are not allowed",
@@ -223,10 +222,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_windows_drive_path_portably() {
+    fn rejects_windows_root_and_device_paths_portably() {
         assert!(validate_relative_target(r"C:\Windows\System32").is_err());
-        assert!(validate_relative_target(r"\server\share\file").is_err());
-        assert!(validate_relative_target(r"\?\C:\Windows").is_err());
+        assert!(validate_relative_target(r"\Windows\System32").is_err());
+        assert!(validate_relative_target(r"\\server\share\file").is_err());
+        assert!(validate_relative_target(r"\\?\C:\Windows").is_err());
+        assert!(validate_relative_target(r"\\.\PhysicalDrive0").is_err());
     }
 
     #[test]
