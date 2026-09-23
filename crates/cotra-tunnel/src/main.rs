@@ -13,7 +13,9 @@ fn main() {
             Ok(status) => {
                 eprintln!(
                     "cotra-tunnel: tunnel-client exited with {}",
-                    status.code().map_or_else(|| "signal".into(), |v| v.to_string())
+                    status
+                        .code()
+                        .map_or_else(|| "signal".into(), |v| v.to_string())
                 );
                 std::process::exit(3);
             }
