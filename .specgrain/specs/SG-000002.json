@@ -1,0 +1,81 @@
+{
+  "id": "SG-000002",
+  "title": "Approved UTF-8 file mutation",
+  "program": "COTRA-P04",
+  "state": "GRAIN",
+  "risk": "high",
+  "created": "2026-09-24",
+  "base": "4e83e019d8f3ebc38d6bd36edbce1afdcac1a5b7",
+  "dependencies": ["SG-000001"],
+  "objective": "Add exact-target UTF-8 file create/overwrite with local approval, content/current-state binding, stale-target rejection, and post-approval revalidation.",
+  "scope": {
+    "include": [
+      "fs.write preview",
+      "fs.write create/overwrite",
+      "SHA-256 current/new content binding",
+      "Windows local approval prompt",
+      "stale target rejection",
+      "create parent revalidation",
+      "write limits and audit states",
+      "MCP tools for preview and approved write"
+    ],
+    "exclude": [
+      "delete",
+      "rename",
+      "arbitrary process execution",
+      "PowerShell",
+      "Git mutation",
+      "browser automation",
+      "clipboard",
+      "Windows UI Automation",
+      "mouse/keyboard injection",
+      "elevation"
+    ]
+  },
+  "authority_delta": {
+    "filesystem": "Adds approved create/overwrite only inside trusted workspace roots",
+    "process": "None",
+    "network": "No change",
+    "browser": "None",
+    "ui_input": "Local Cotra approval prompt only; no agent input authority",
+    "secrets": "No change",
+    "approval": "Adds independent local soft approval for file writes",
+    "privileged": "None"
+  },
+  "invariants": [
+    "MCP exposes no approval tool",
+    "Every write requires local approval on Windows",
+    "Existing file writes require exact current SHA-256 from preview",
+    "Target state is revalidated after approval before bytes are written",
+    "Symlink/junction resolution cannot widen workspace authority",
+    "Missing targets require create_if_missing=true",
+    "Create parent is re-resolved around creation",
+    "Write content is bounded to 2 MiB"
+  ],
+  "acceptance": [
+    {"id": "A1", "claim": "Preview returns current/new hashes without mutation."},
+    {"id": "A2", "claim": "Stale existing content fails with TARGET_STALE and remains unchanged."},
+    {"id": "A3", "claim": "Approved existing-file overwrite writes exact content through a verified handle."},
+    {"id": "A4", "claim": "Approved create is limited to an authorized resolved parent and detects parent drift."},
+    {"id": "A5", "claim": "Denied or unavailable approval never mutates the target."},
+    {"id": "A6", "claim": "MCP cannot approve its own request."},
+    {"id": "A7", "claim": "Windows and portable CI pass on the exact head."}
+  ],
+  "required_tests": [
+    "existing write with expected hash",
+    "stale hash rejection",
+    "explicit create",
+    "symlink/junction write escape",
+    "approval broker allow/deny unit tests",
+    "policy content/authority tests",
+    "Windows native CI"
+  ],
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": true,
+    "security_review": true,
+    "exact_head_ci": true
+  },
+  "done_when": "Exact-head CI and security review prove approved writes on the bounded surface, the PR is merged, and post-merge CI is green."
+}

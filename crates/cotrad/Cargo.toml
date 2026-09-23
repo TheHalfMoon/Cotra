@@ -7,6 +7,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+cotra-approval = { path = "../cotra-approval" }
 cotra-audit = { path = "../cotra-audit" }
 cotra-contracts = { path = "../cotra-contracts" }
 cotra-policy = { path = "../cotra-policy" }
