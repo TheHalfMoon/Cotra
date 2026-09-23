@@ -1,0 +1,11 @@
+{
+  "name": "cotra",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/cotra-mcp"],
+  "scripts": {
+    "build": "npm run build --workspace @cotra/mcp",
+    "typecheck": "npm run typecheck --workspace @cotra/mcp",
+    "test": "npm run test --workspace @cotra/mcp"
+  }
+}

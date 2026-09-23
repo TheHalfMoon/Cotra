@@ -1,0 +1,13 @@
+[package]
+name = "cotra-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cotra-contracts = { path = "../cotra-contracts" }
+
+[dev-dependencies]
+serde_json.workspace = true

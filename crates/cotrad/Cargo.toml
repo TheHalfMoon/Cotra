@@ -1,0 +1,15 @@
+[package]
+name = "cotrad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cotra-audit = { path = "../cotra-audit" }
+cotra-contracts = { path = "../cotra-contracts" }
+cotra-policy = { path = "../cotra-policy" }
+cotra-provider-fs = { path = "../cotra-provider-fs" }
+serde.workspace = true
+serde_json.workspace = true
