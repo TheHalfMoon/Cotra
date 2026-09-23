@@ -18,11 +18,17 @@ pub struct ProviderError {
 
 impl ProviderError {
     fn new(code: FailureCode, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 
     fn io(context: &str, error: io::Error) -> Self {
-        Self::new(FailureCode::ProviderUnavailable, format!("{context}: {error}"))
+        Self::new(
+            FailureCode::ProviderUnavailable,
+            format!("{context}: {error}"),
+        )
     }
 }
 
@@ -42,7 +48,10 @@ impl FsProvider {
                 "workspace root is not a directory",
             ));
         }
-        Ok(Self { root, max_read_bytes: DEFAULT_MAX_READ_BYTES })
+        Ok(Self {
+            root,
+            max_read_bytes: DEFAULT_MAX_READ_BYTES,
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -51,8 +60,8 @@ impl FsProvider {
 
     pub fn stat(&self, relative: &str) -> Result<Value, ProviderError> {
         let resolved = self.resolve_existing(relative)?;
-        let metadata = fs::metadata(&resolved)
-            .map_err(|error| ProviderError::io("stat target", error))?;
+        let metadata =
+            fs::metadata(&resolved).map_err(|error| ProviderError::io("stat target", error))?;
         Ok(json!({
             "path": relative,
             "kind": if metadata.is_dir() { "directory" } else if metadata.is_file() { "file" } else { "other" },
@@ -71,11 +80,12 @@ impl FsProvider {
         }
 
         let mut entries = Vec::new();
-        let iterator = fs::read_dir(&resolved)
-            .map_err(|error| ProviderError::io("list directory", error))?;
+        let iterator =
+            fs::read_dir(&resolved).map_err(|error| ProviderError::io("list directory", error))?;
         for entry in iterator {
             let entry = entry.map_err(|error| ProviderError::io("read directory entry", error))?;
-            let file_type = entry.file_type()
+            let file_type = entry
+                .file_type()
                 .map_err(|error| ProviderError::io("read entry type", error))?;
             entries.push(json!({
                 "name": entry.file_name().to_string_lossy(),
@@ -85,7 +95,8 @@ impl FsProvider {
             }));
         }
         entries.sort_by(|a, b| {
-            a.get("name").and_then(Value::as_str)
+            a.get("name")
+                .and_then(Value::as_str)
                 .cmp(&b.get("name").and_then(Value::as_str))
         });
 
@@ -98,7 +109,8 @@ impl FsProvider {
             .map_err(|error| ProviderError::io("open file", error))?;
         self.ensure_within(&resolved)?;
 
-        let metadata = file.metadata()
+        let metadata = file
+            .metadata()
             .map_err(|error| ProviderError::io("read file metadata", error))?;
         if !metadata.is_file() {
             return Err(ProviderError::new(
@@ -213,7 +225,8 @@ impl FsProvider {
             }
 
             let mut bytes = Vec::with_capacity(metadata.len() as usize);
-            if file.take((MAX_SEARCH_FILE_BYTES + 1) as u64)
+            if file
+                .take((MAX_SEARCH_FILE_BYTES + 1) as u64)
                 .read_to_end(&mut bytes)
                 .is_err()
             {
@@ -229,7 +242,8 @@ impl FsProvider {
 
             for (index, line) in text.lines().enumerate() {
                 if line.contains(query) {
-                    let rel = resolved.strip_prefix(&self.root)
+                    let rel = resolved
+                        .strip_prefix(&self.root)
                         .unwrap_or(&resolved)
                         .to_string_lossy()
                         .to_string();
@@ -297,9 +311,13 @@ fn open_verified_file(path: &Path) -> io::Result<(File, PathBuf)> {
 
 fn resolve_final_path(path: &Path) -> io::Result<PathBuf> {
     #[cfg(windows)]
-    { win::final_path(path) }
+    {
+        win::final_path(path)
+    }
     #[cfg(not(windows))]
-    { fs::canonicalize(path) }
+    {
+        fs::canonicalize(path)
+    }
 }
 
 #[cfg(windows)]
@@ -375,7 +393,9 @@ mod win {
             return Err(io::Error::last_os_error());
         }
         let result = final_path_from_handle_impl(handle);
-        unsafe { CloseHandle(handle); }
+        unsafe {
+            CloseHandle(handle);
+        }
         result
     }
 
@@ -447,7 +467,9 @@ mod tests {
         std::fs::write(outside.join("secret.txt"), "secret").expect("write");
         symlink(&outside, root.join("escape")).expect("symlink");
         let provider = FsProvider::new(&root).expect("provider");
-        let error = provider.read_text("escape/secret.txt").expect_err("escape must fail");
+        let error = provider
+            .read_text("escape/secret.txt")
+            .expect_err("escape must fail");
         assert_eq!(error.code, FailureCode::PathEscape);
         let _ = std::fs::remove_dir_all(root);
         let _ = std::fs::remove_dir_all(outside);
@@ -462,12 +484,18 @@ mod tests {
         std::fs::write(outside.join("secret.txt"), "secret").expect("write");
         let junction = root.join("escape");
         let status = Command::new("cmd")
-            .arg("/C").arg("mklink").arg("/J")
-            .arg(&junction).arg(&outside)
-            .status().expect("mklink");
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(&junction)
+            .arg(&outside)
+            .status()
+            .expect("mklink");
         assert!(status.success(), "junction fixture creation failed");
         let provider = FsProvider::new(&root).expect("provider");
-        let error = provider.read_text("escape/secret.txt").expect_err("junction escape must fail");
+        let error = provider
+            .read_text("escape/secret.txt")
+            .expect_err("junction escape must fail");
         assert_eq!(error.code, FailureCode::PathEscape);
         let _ = std::fs::remove_dir_all(root);
         let _ = std::fs::remove_dir_all(outside);
@@ -478,7 +506,9 @@ mod tests {
         let root = temp_dir("search");
         std::fs::write(root.join("a.txt"), "one\nneedle\nthree").expect("write");
         let provider = FsProvider::new(&root).expect("provider");
-        let result = provider.search_text(".", "needle", Some(5)).expect("search");
+        let result = provider
+            .search_text(".", "needle", Some(5))
+            .expect("search");
         assert_eq!(result["matches"].as_array().expect("matches").len(), 1);
         let _ = std::fs::remove_dir_all(root);
     }
