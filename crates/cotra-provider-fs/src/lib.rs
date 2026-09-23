@@ -549,11 +549,11 @@ fn open_verified_file(path: &Path) -> io::Result<(File, PathBuf)> {
     Ok((file, resolved))
 }
 
-fn final_path_from_open_file(file: &File, path: &Path) -> io::Result<PathBuf> {
+fn final_path_from_open_file(_file: &File, path: &Path) -> io::Result<PathBuf> {
     #[cfg(windows)]
     {
         use std::os::windows::io::AsRawHandle;
-        win::final_path_from_handle(file.as_raw_handle())
+        win::final_path_from_handle(_file.as_raw_handle())
     }
     #[cfg(not(windows))]
     {
