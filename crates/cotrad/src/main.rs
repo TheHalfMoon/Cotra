@@ -291,3 +291,73 @@ fn content(request: &RequestEnvelope) -> Result<&str, ProviderError> {
             )
         })
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cotra_approval::{ApprovalError, ApprovalPrompt};
+    use serde_json::json;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct DenyBroker;
+
+    impl ApprovalBroker for DenyBroker {
+        fn request(
+            &self,
+            _prompt: &ApprovalPrompt,
+        ) -> Result<ApprovalDecision, ApprovalError> {
+            Ok(ApprovalDecision::Denied)
+        }
+    }
+
+    fn temp_root() -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("cotra-daemon-write-{suffix}"));
+        fs::create_dir_all(&root).expect("create temp workspace");
+        root
+    }
+
+    #[test]
+    fn denied_approval_does_not_mutate_existing_file() {
+        let root = temp_root();
+        fs::write(root.join("notes.txt"), "before").expect("seed file");
+        let workspace = Workspace {
+            id: "default".into(),
+            root: fs::canonicalize(&root).expect("canonical workspace"),
+        };
+        let policy = PolicyEngine::new(vec![workspace.clone()]).expect("policy");
+        let provider = FsProvider::new(&workspace.root).expect("provider");
+        let preview = provider
+            .preview_write("notes.txt", "after")
+            .expect("preview");
+
+        let request = RequestEnvelope {
+            version: INTERNAL_PROTOCOL_VERSION,
+            request_id: "r-deny".into(),
+            client_session_id: "s-test".into(),
+            workspace_id: workspace.id.clone(),
+            capability: "fs.write".into(),
+            operation: "write".into(),
+            target: Some("notes.txt".into()),
+            arguments: json!({
+                "content": "after",
+                "expected_current_sha256": preview.current_sha256,
+                "create_if_missing": false
+            }),
+        };
+
+        let error = dispatch(&policy, &workspace, &DenyBroker, &request)
+            .expect_err("denied approval must fail");
+        assert_eq!(error.code, FailureCode::ApprovalDenied);
+        assert_eq!(
+            fs::read_to_string(root.join("notes.txt")).expect("read result"),
+            "before"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+}
