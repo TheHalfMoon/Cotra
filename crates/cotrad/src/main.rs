@@ -292,7 +292,6 @@ fn content(request: &RequestEnvelope) -> Result<&str, ProviderError> {
         })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,10 +303,7 @@ mod tests {
     struct DenyBroker;
 
     impl ApprovalBroker for DenyBroker {
-        fn request(
-            &self,
-            _prompt: &ApprovalPrompt,
-        ) -> Result<ApprovalDecision, ApprovalError> {
+        fn request(&self, _prompt: &ApprovalPrompt) -> Result<ApprovalDecision, ApprovalError> {
             Ok(ApprovalDecision::Denied)
         }
     }
