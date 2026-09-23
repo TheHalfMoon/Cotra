@@ -165,8 +165,7 @@ pub fn validate_relative_target(target: &str) -> Result<(), PolicyError> {
     let bytes = portable.as_bytes();
     let drive_prefixed = bytes.len() >= 2 && bytes[1] == b':';
     let root_prefixed = portable.starts_with('\\');
-    let device_prefixed =
-        portable.starts_with("\\\\?\\") || portable.starts_with("\\\\.\\");
+    let device_prefixed = portable.starts_with("\\\\?\\") || portable.starts_with("\\\\.\\");
     if drive_prefixed || root_prefixed || device_prefixed {
         return Err(PolicyError::new(
             FailureCode::PathEscape,
@@ -279,7 +278,9 @@ mod tests {
         let mut req = request("file.txt");
         req.capability = "fs.write".into();
         req.operation = "write".into();
-        let error = engine.authorize(&req).expect_err("missing content must fail");
+        let error = engine
+            .authorize(&req)
+            .expect_err("missing content must fail");
         assert_eq!(error.code, FailureCode::InvalidRequest);
         let _ = std::fs::remove_dir_all(root);
     }
