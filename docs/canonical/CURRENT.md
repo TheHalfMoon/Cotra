@@ -6,9 +6,14 @@ Date: 2026-09-24
 ## Canonical main
 
 Current base for active work:
-4e83e019d8f3ebc38d6bd36edbce1afdcac1a5b7
+7d4003a1b6a82cac577c77e91b7d2606f49733f4
 
-SG-000001 is merged and exact-head qualified. Post-merge CI run 35922412274 passed all five jobs, including native Windows Rust and Node jobs.
+SG-000001 and SG-000002 are COMPLETE_CANONICAL.
+
+SG-000002 evidence:
+- exact-head CI run 35923989601: 5/5 SUCCESS;
+- merge SHA: 7d4003a1b6a82cac577c77e91b7d2606f49733f4;
+- post-merge CI run 35924151711: 5/5 SUCCESS.
 
 Canonical capabilities:
 - system.status/get
@@ -17,22 +22,22 @@ Canonical capabilities:
 - fs.list/list
 - fs.read/read
 - fs.search/search
-
-Canonical authority remains read-only.
+- fs.write/preview
+- fs.write/write with independent local approval
 
 ## Active grain
 
-SG-000002 — Approved UTF-8 file mutation
+SG-000003 — Read-only Git provider
 
 Branch:
-feat/sg-000002-approved-file-write
+feat/sg-000003-read-only-git
 
 Purpose:
-- add file-write preview;
-- add approved create/overwrite;
-- bind approval to content/current-state digests;
-- reject stale target state;
-- keep approval outside the MCP tool surface.
+- complete COTRA-P02 read-only Git;
+- expose typed status/diff/log only;
+- keep Git invocation internal and fixed;
+- sanitize the child environment;
+- prevent network or generic shell authority.
 
 ## Architecture decision
 

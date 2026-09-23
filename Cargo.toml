@@ -6,6 +6,7 @@ members = [
   "crates/cotra-audit",
   "crates/cotra-approval",
   "crates/cotra-provider-fs",
+  "crates/cotra-provider-git",
   "crates/cotrad",
 ]
 

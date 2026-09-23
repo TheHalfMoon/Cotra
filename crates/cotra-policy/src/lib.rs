@@ -2,7 +2,7 @@ use cotra_contracts::{FailureCode, RequestEnvelope};
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
-pub const POLICY_REVISION: &str = "sg-000002-v1";
+pub const POLICY_REVISION: &str = "sg-000003-v1";
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -108,21 +108,24 @@ impl PolicyEngine {
                 | ("fs.search", "search")
                 | ("fs.write", "preview")
                 | ("fs.write", "write")
+                | ("git.status", "status")
+                | ("git.diff", "diff")
+                | ("git.log", "log")
         );
 
         if !allowed {
             return Err(PolicyError::new(
                 FailureCode::CapabilityDenied,
                 format!(
-                    "capability/operation is not allowed in SG-000002: {}/{}",
+                    "capability/operation is not allowed in SG-000003: {}/{}",
                     request.capability, request.operation
                 ),
             ));
         }
 
-        if request.capability.starts_with("fs.") {
+        if request.capability.starts_with("fs.") || request.capability.starts_with("git.") {
             let target = request.target.as_deref().ok_or_else(|| {
-                PolicyError::new(FailureCode::InvalidRequest, "filesystem target is required")
+                PolicyError::new(FailureCode::InvalidRequest, "workspace-relative target is required")
             })?;
             validate_relative_target(target)?;
         }

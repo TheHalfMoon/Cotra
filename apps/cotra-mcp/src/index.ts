@@ -233,6 +233,73 @@ function createServer(): McpServer {
       )
   );
 
+  server.registerTool(
+    "git_status",
+    {
+      description:
+        "Read Git working-tree and branch status for a repository inside a trusted workspace. This tool does not mutate Git state.",
+      inputSchema: z.object({
+        workspace_id: z.string().min(1).default(DEFAULT_WORKSPACE),
+        path: z.string().min(1).default(".")
+      })
+    },
+    async ({ workspace_id, path }) =>
+      asToolResult(
+        await kernel.call({
+          workspaceId: workspace_id,
+          capability: "git.status",
+          operation: "status",
+          target: path
+        })
+      )
+  );
+
+  server.registerTool(
+    "git_diff",
+    {
+      description:
+        "Read a bounded Git diff for a repository inside a trusted workspace. External diff and textconv are disabled.",
+      inputSchema: z.object({
+        workspace_id: z.string().min(1).default(DEFAULT_WORKSPACE),
+        path: z.string().min(1).default("."),
+        staged: z.boolean().default(false)
+      })
+    },
+    async ({ workspace_id, path, staged }) =>
+      asToolResult(
+        await kernel.call({
+          workspaceId: workspace_id,
+          capability: "git.diff",
+          operation: "diff",
+          target: path,
+          arguments: { staged }
+        })
+      )
+  );
+
+  server.registerTool(
+    "git_log",
+    {
+      description:
+        "Read bounded Git commit history for a repository inside a trusted workspace.",
+      inputSchema: z.object({
+        workspace_id: z.string().min(1).default(DEFAULT_WORKSPACE),
+        path: z.string().min(1).default("."),
+        max_count: z.number().int().min(1).max(100).default(20)
+      })
+    },
+    async ({ workspace_id, path, max_count }) =>
+      asToolResult(
+        await kernel.call({
+          workspaceId: workspace_id,
+          capability: "git.log",
+          operation: "log",
+          target: path,
+          arguments: { max_count }
+        })
+      )
+  );
+
   server.server.onclose = () => {
     kernel.close();
     clients.delete(kernel);
@@ -242,7 +309,7 @@ function createServer(): McpServer {
 }
 
 const handle = serveStdio(createServer);
-process.stderr.write("[cotra-mcp] serving Cotra SG-000002 tools over stdio\n");
+process.stderr.write("[cotra-mcp] serving Cotra SG-000003 tools over stdio\n");
 
 function shutdown(): void {
   for (const client of clients) {

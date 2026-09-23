@@ -1,0 +1,76 @@
+{
+  "id": "SG-000003",
+  "title": "Read-only Git provider",
+  "program": "COTRA-P02",
+  "state": "GRAIN",
+  "risk": "medium",
+  "created": "2026-09-24",
+  "base": "7d4003a1b6a82cac577c77e91b7d2606f49733f4",
+  "dependencies": ["SG-000001", "SG-000002"],
+  "objective": "Complete the read-only Git portion of COTRA-P02 with typed status, diff, and log operations that cannot widen into general shell or network authority.",
+  "scope": {
+    "include": [
+      "git.status",
+      "git.diff",
+      "git.log",
+      "trusted-workspace repository validation",
+      "sanitized Git child environment",
+      "disabled external diff/textconv/global/system config",
+      "bounded stdout/stderr",
+      "30 second command timeout",
+      "MCP tools for typed read-only Git"
+    ],
+    "exclude": [
+      "Git branch mutation",
+      "stage/commit/fetch/push",
+      "network Git operations",
+      "generic process execution",
+      "PowerShell",
+      "shell command strings",
+      "hooks or arbitrary Git aliases"
+    ]
+  },
+  "authority_delta": {
+    "filesystem": "Read-only Git metadata/content through fixed Git subcommands inside trusted workspaces",
+    "process": "Internal fixed git executable invocation only; no client-selected executable or argv surface",
+    "network": "None",
+    "browser": "None",
+    "ui_input": "None",
+    "secrets": "Git child receives a curated environment without Cotra/tunnel secret variables",
+    "approval": "No change",
+    "privileged": "None"
+  },
+  "invariants": [
+    "No generic git command or shell tool is exposed",
+    "Only status/diff/log/rev-parse fixed subcommands execute",
+    "Reported repository root must resolve inside the trusted workspace",
+    "Global/system Git config is disabled",
+    "External diff and textconv are disabled",
+    "Git terminal prompting is disabled",
+    "Git output is bounded and commands time out",
+    "No network Git subcommand is exposed"
+  ],
+  "acceptance": [
+    {"id": "A1", "claim": "git.status reports working tree state without mutation."},
+    {"id": "A2", "claim": "git.diff returns bounded worktree or staged diff with external diff/textconv disabled."},
+    {"id": "A3", "claim": "git.log returns bounded structured history."},
+    {"id": "A4", "claim": "Non-repositories and out-of-workspace repository roots fail closed."},
+    {"id": "A5", "claim": "No client-controlled executable, raw argv, shell, or network operation is introduced."},
+    {"id": "A6", "claim": "Windows and portable exact-head CI pass."}
+  ],
+  "required_tests": [
+    "status/diff/log integration test",
+    "non-repository rejection",
+    "workspace escape regression",
+    "Windows native CI",
+    "Ubuntu portable CI"
+  ],
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": "where integrated",
+    "security_review": true,
+    "exact_head_ci": true
+  },
+  "done_when": "Exact-head Windows/Ubuntu CI and semantic review pass, the PR is merged, and post-merge CI is green."
+}
