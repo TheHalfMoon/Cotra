@@ -174,6 +174,65 @@ function createServer(): McpServer {
       )
   );
 
+  server.registerTool(
+    "fs_write_preview",
+    {
+      description:
+        "Preview an exact UTF-8 file write. This does not mutate the computer and returns the current/new SHA-256 values required for an approved write.",
+      inputSchema: z.object({
+        workspace_id: z.string().min(1).default(DEFAULT_WORKSPACE),
+        path: z.string().min(1),
+        content: z.string().max(2 * 1024 * 1024)
+      })
+    },
+    async ({ workspace_id, path, content }) =>
+      asToolResult(
+        await kernel.call({
+          workspaceId: workspace_id,
+          capability: "fs.write",
+          operation: "preview",
+          target: path,
+          arguments: { content }
+        })
+      )
+  );
+
+  server.registerTool(
+    "fs_write",
+    {
+      description:
+        "Write exact UTF-8 content inside a trusted workspace after an independent local Cotra approval. Existing files require the current SHA-256 from fs_write_preview.",
+      inputSchema: z.object({
+        workspace_id: z.string().min(1).default(DEFAULT_WORKSPACE),
+        path: z.string().min(1),
+        content: z.string().max(2 * 1024 * 1024),
+        expected_current_sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+        create_if_missing: z.boolean().default(false)
+      })
+    },
+    async ({
+      workspace_id,
+      path,
+      content,
+      expected_current_sha256,
+      create_if_missing
+    }) =>
+      asToolResult(
+        await kernel.call({
+          workspaceId: workspace_id,
+          capability: "fs.write",
+          operation: "write",
+          target: path,
+          arguments: {
+            content,
+            expected_current_sha256,
+            create_if_missing
+          },
+          timeoutMs: 5 * 60_000
+        })
+      )
+  );
+
   server.server.onclose = () => {
     kernel.close();
     clients.delete(kernel);
@@ -183,7 +242,7 @@ function createServer(): McpServer {
 }
 
 const handle = serveStdio(createServer);
-process.stderr.write("[cotra-mcp] serving read-only Cotra tools over stdio\n");
+process.stderr.write("[cotra-mcp] serving Cotra SG-000002 tools over stdio\n");
 
 function shutdown(): void {
   for (const client of clients) {

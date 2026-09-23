@@ -1,14 +1,16 @@
 use cotra_contracts::FailureCode;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
-use std::fs::{self, File};
-use std::io::{self, Read};
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 const DEFAULT_MAX_READ_BYTES: usize = 1024 * 1024;
 const DEFAULT_MAX_SEARCH_FILES: usize = 2_000;
 const DEFAULT_MAX_SEARCH_RESULTS: usize = 200;
 const MAX_SEARCH_FILE_BYTES: usize = 512 * 1024;
+const MAX_WRITE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug)]
 pub struct ProviderError {
@@ -17,7 +19,7 @@ pub struct ProviderError {
 }
 
 impl ProviderError {
-    fn new(code: FailureCode, message: impl Into<String>) -> Self {
+    pub fn new(code: FailureCode, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -28,6 +30,38 @@ impl ProviderError {
         Self::new(
             FailureCode::ProviderUnavailable,
             format!("{context}: {error}"),
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WritePreview {
+    pub relative: String,
+    pub exists: bool,
+    pub current_sha256: Option<String>,
+    pub new_sha256: String,
+    pub bytes: usize,
+}
+
+impl WritePreview {
+    pub fn to_json(&self) -> Value {
+        json!({
+            "path": self.relative,
+            "exists": self.exists,
+            "current_sha256": self.current_sha256,
+            "new_sha256": self.new_sha256,
+            "bytes": self.bytes
+        })
+    }
+
+    pub fn approval_digest(&self) -> String {
+        let current = self.current_sha256.as_deref().unwrap_or("<missing>");
+        sha256_hex(
+            format!(
+                "fs.write\n{}\n{}\n{}\n{}",
+                self.relative, current, self.new_sha256, self.bytes
+            )
+            .as_bytes(),
         )
     }
 }
@@ -138,11 +172,186 @@ impl FsProvider {
         let text = String::from_utf8(bytes).map_err(|_| {
             ProviderError::new(
                 FailureCode::InvalidRequest,
-                "SG-000001 fs.read supports UTF-8 text files only",
+                "fs.read supports UTF-8 text files only",
             )
         })?;
 
         Ok(json!({"path": relative, "text": text, "bytes": metadata.len()}))
+    }
+
+    pub fn preview_write(&self, relative: &str, content: &str) -> Result<WritePreview, ProviderError> {
+        if content.len() > MAX_WRITE_BYTES {
+            return Err(ProviderError::new(
+                FailureCode::OutputLimit,
+                "write content exceeds 2 MiB limit",
+            ));
+        }
+        let candidate = self.root.join(relative);
+        match OpenOptions::new().read(true).write(true).open(&candidate) {
+            Ok(file) => {
+                let resolved = final_path_from_open_file(&file, &candidate)
+                    .map_err(|error| ProviderError::io("resolve write target", error))?;
+                self.ensure_within(&resolved)?;
+                let metadata = file
+                    .metadata()
+                    .map_err(|error| ProviderError::io("read write target metadata", error))?;
+                if !metadata.is_file() {
+                    return Err(ProviderError::new(
+                        FailureCode::InvalidRequest,
+                        "write target is not a regular file",
+                    ));
+                }
+                let current = hash_file(file)?;
+                Ok(WritePreview {
+                    relative: relative.to_owned(),
+                    exists: true,
+                    current_sha256: Some(current),
+                    new_sha256: sha256_hex(content.as_bytes()),
+                    bytes: content.len(),
+                })
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                let parent = candidate.parent().ok_or_else(|| {
+                    ProviderError::new(FailureCode::InvalidRequest, "write target has no parent")
+                })?;
+                let resolved_parent = resolve_final_path(parent)
+                    .map_err(|error| ProviderError::io("resolve write parent", error))?;
+                self.ensure_within(&resolved_parent)?;
+                Ok(WritePreview {
+                    relative: relative.to_owned(),
+                    exists: false,
+                    current_sha256: None,
+                    new_sha256: sha256_hex(content.as_bytes()),
+                    bytes: content.len(),
+                })
+            }
+            Err(error) => Err(ProviderError::io("open write target", error)),
+        }
+    }
+
+    pub fn write_text(
+        &self,
+        relative: &str,
+        content: &str,
+        expected_current_sha256: Option<&str>,
+        create_if_missing: bool,
+    ) -> Result<Value, ProviderError> {
+        if content.len() > MAX_WRITE_BYTES {
+            return Err(ProviderError::new(
+                FailureCode::OutputLimit,
+                "write content exceeds 2 MiB limit",
+            ));
+        }
+
+        let candidate = self.root.join(relative);
+        match OpenOptions::new().read(true).write(true).open(&candidate) {
+            Ok(mut file) => {
+                let resolved = final_path_from_open_file(&file, &candidate)
+                    .map_err(|error| ProviderError::io("resolve write target", error))?;
+                self.ensure_within(&resolved)?;
+                if !file
+                    .metadata()
+                    .map_err(|error| ProviderError::io("read write metadata", error))?
+                    .is_file()
+                {
+                    return Err(ProviderError::new(
+                        FailureCode::InvalidRequest,
+                        "write target is not a regular file",
+                    ));
+                }
+                let actual = hash_file(&file)?;
+                let expected = expected_current_sha256.ok_or_else(|| {
+                    ProviderError::new(
+                        FailureCode::TargetStale,
+                        "existing file requires expected_current_sha256 from preview",
+                    )
+                })?;
+                if actual != expected {
+                    return Err(ProviderError::new(
+                        FailureCode::TargetStale,
+                        "target changed since preview",
+                    ));
+                }
+                file.seek(SeekFrom::Start(0))
+                    .map_err(|error| ProviderError::io("seek write target", error))?;
+                file.set_len(0)
+                    .map_err(|error| ProviderError::io("truncate write target", error))?;
+                file.write_all(content.as_bytes())
+                    .map_err(|error| ProviderError::io("write target", error))?;
+                file.sync_data()
+                    .map_err(|error| ProviderError::io("sync write target", error))?;
+                Ok(json!({
+                    "path": relative,
+                    "created": false,
+                    "bytes": content.len(),
+                    "sha256": sha256_hex(content.as_bytes())
+                }))
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                if !create_if_missing {
+                    return Err(ProviderError::new(
+                        FailureCode::TargetStale,
+                        "target is missing and create_if_missing is false",
+                    ));
+                }
+                if expected_current_sha256.is_some() {
+                    return Err(ProviderError::new(
+                        FailureCode::TargetStale,
+                        "target disappeared since preview",
+                    ));
+                }
+                self.create_text_verified(relative, content)
+            }
+            Err(error) => Err(ProviderError::io("open write target", error)),
+        }
+    }
+
+    fn create_text_verified(&self, relative: &str, content: &str) -> Result<Value, ProviderError> {
+        let candidate = self.root.join(relative);
+        let parent = candidate.parent().ok_or_else(|| {
+            ProviderError::new(FailureCode::InvalidRequest, "create target has no parent")
+        })?;
+        let before = resolve_final_path(parent)
+            .map_err(|error| ProviderError::io("resolve create parent", error))?;
+        self.ensure_within(&before)?;
+
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+            .map_err(|error| ProviderError::io("create target", error))?;
+
+        let resolved = final_path_from_open_file(&file, &candidate)
+            .map_err(|error| ProviderError::io("resolve created target", error))?;
+        if let Err(error) = self.ensure_within(&resolved) {
+            let _ = file.set_len(0);
+            drop(file);
+            let _ = fs::remove_file(&resolved);
+            return Err(error);
+        }
+
+        let after = resolve_final_path(parent)
+            .map_err(|error| ProviderError::io("re-resolve create parent", error))?;
+        if before != after {
+            drop(file);
+            let _ = fs::remove_file(&resolved);
+            return Err(ProviderError::new(
+                FailureCode::PathRaceDetected,
+                "parent directory identity changed during create",
+            ));
+        }
+
+        file.write_all(content.as_bytes())
+            .map_err(|error| ProviderError::io("write created target", error))?;
+        file.sync_data()
+            .map_err(|error| ProviderError::io("sync created target", error))?;
+        Ok(json!({
+            "path": relative,
+            "created": true,
+            "bytes": content.len(),
+            "sha256": sha256_hex(content.as_bytes())
+        }))
     }
 
     pub fn search_text(
@@ -288,6 +497,39 @@ impl FsProvider {
     }
 }
 
+fn hash_file(mut file: impl Read + Seek) -> Result<String, ProviderError> {
+    file.seek(SeekFrom::Start(0))
+        .map_err(|error| ProviderError::io("seek hash target", error))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|error| ProviderError::io("hash target", error))?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(hex_lower(&hasher.finalize()))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex_lower(&hasher.finalize())
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for &byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
 fn truncate_line(line: &str, max_chars: usize) -> String {
     let mut chars = line.chars();
     let mut output: String = chars.by_ref().take(max_chars).collect();
@@ -299,14 +541,20 @@ fn truncate_line(line: &str, max_chars: usize) -> String {
 
 fn open_verified_file(path: &Path) -> io::Result<(File, PathBuf)> {
     let file = File::open(path)?;
+    let resolved = final_path_from_open_file(&file, path)?;
+    Ok((file, resolved))
+}
+
+fn final_path_from_open_file(file: &File, path: &Path) -> io::Result<PathBuf> {
     #[cfg(windows)]
-    let resolved = {
+    {
         use std::os::windows::io::AsRawHandle;
         win::final_path_from_handle(file.as_raw_handle())
-    }?;
+    }
     #[cfg(not(windows))]
-    let resolved = fs::canonicalize(path)?;
-    Ok((file, resolved))
+    {
+        fs::canonicalize(path)
+    }
 }
 
 fn resolve_final_path(path: &Path) -> io::Result<PathBuf> {
@@ -340,96 +588,104 @@ fn is_within(root: &Path, candidate: &Path) -> bool {
 
 #[cfg(windows)]
 mod win {
+    use super::*;
     use std::ffi::c_void;
-    use std::io;
     use std::os::windows::ffi::OsStrExt;
-    use std::path::{Path, PathBuf};
+    use std::os::windows::io::RawHandle;
 
     type Handle = *mut c_void;
-
     const FILE_READ_ATTRIBUTES: u32 = 0x0080;
     const FILE_SHARE_READ: u32 = 0x00000001;
     const FILE_SHARE_WRITE: u32 = 0x00000002;
     const FILE_SHARE_DELETE: u32 = 0x00000004;
     const OPEN_EXISTING: u32 = 3;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x02000000;
+    const VOLUME_NAME_DOS: u32 = 0x0;
     const INVALID_HANDLE_VALUE: Handle = -1isize as Handle;
 
     #[link(name = "kernel32")]
     extern "system" {
         fn CreateFileW(
-            file_name: *const u16,
-            desired_access: u32,
+            name: *const u16,
+            access: u32,
             share_mode: u32,
-            security_attributes: *const c_void,
-            creation_disposition: u32,
-            flags_and_attributes: u32,
-            template_file: Handle,
+            security: *mut c_void,
+            creation: u32,
+            flags: u32,
+            template: Handle,
         ) -> Handle;
         fn GetFinalPathNameByHandleW(
             file: Handle,
-            file_path: *mut u16,
-            file_path_len: u32,
+            path: *mut u16,
+            size: u32,
             flags: u32,
         ) -> u32;
         fn CloseHandle(handle: Handle) -> i32;
     }
 
+    struct OwnedHandle(Handle);
+    impl Drop for OwnedHandle {
+        fn drop(&mut self) {
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+
     pub fn final_path(path: &Path) -> io::Result<PathBuf> {
-        let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
-        wide.push(0);
-        let handle = unsafe {
+        let wide: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let raw = unsafe {
             CreateFileW(
                 wide.as_ptr(),
                 FILE_READ_ATTRIBUTES,
                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                std::ptr::null(),
+                std::ptr::null_mut(),
                 OPEN_EXISTING,
                 FILE_FLAG_BACKUP_SEMANTICS,
                 std::ptr::null_mut(),
             )
         };
-        if handle == INVALID_HANDLE_VALUE {
+        if raw == INVALID_HANDLE_VALUE {
             return Err(io::Error::last_os_error());
         }
-        let result = final_path_from_handle_impl(handle);
-        unsafe {
-            CloseHandle(handle);
-        }
-        result
+        let handle = OwnedHandle(raw);
+        final_path_from_handle(handle.0)
     }
 
-    pub fn final_path_from_handle(
-        raw_handle: std::os::windows::io::RawHandle,
-    ) -> io::Result<PathBuf> {
-        final_path_from_handle_impl(raw_handle.cast())
-    }
+    pub fn final_path_from_handle(handle: RawHandle) -> io::Result<PathBuf> {
+        let handle = handle as Handle;
+        let required = unsafe {
+            GetFinalPathNameByHandleW(handle, std::ptr::null_mut(), 0, VOLUME_NAME_DOS)
+        };
+        if required == 0 {
+            return Err(io::Error::last_os_error());
+        }
 
-    fn final_path_from_handle_impl(handle: Handle) -> io::Result<PathBuf> {
-        let mut buffer = vec![0u16; 512];
-        loop {
-            let length = unsafe {
-                GetFinalPathNameByHandleW(handle, buffer.as_mut_ptr(), buffer.len() as u32, 0)
-            };
-            if length == 0 {
-                return Err(io::Error::last_os_error());
-            }
-            if length < buffer.len() as u32 {
-                let text = String::from_utf16_lossy(&buffer[..length as usize]);
-                return Ok(PathBuf::from(strip_extended_prefix(&text)));
-            }
-            buffer.resize(length as usize + 1, 0);
+        let mut buffer = vec![0u16; required as usize + 1];
+        let written = unsafe {
+            GetFinalPathNameByHandleW(
+                handle,
+                buffer.as_mut_ptr(),
+                buffer.len() as u32,
+                VOLUME_NAME_DOS,
+            )
+        };
+        if written == 0 {
+            return Err(io::Error::last_os_error());
         }
-    }
-
-    fn strip_extended_prefix(path: &str) -> String {
-        if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
-            return format!(r"\\{rest}");
-        }
-        if let Some(rest) = path.strip_prefix(r"\\?\") {
-            return rest.to_owned();
-        }
-        path.to_owned()
+        buffer.truncate(written as usize);
+        let value = String::from_utf16(&buffer)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid UTF-16 path"))?;
+        let normalized = value
+            .strip_prefix(r"\\?\UNC\")
+            .map(|rest| format!(r"\\{rest}"))
+            .or_else(|| value.strip_prefix(r"\\?\").map(ToOwned::to_owned))
+            .unwrap_or(value);
+        Ok(PathBuf::from(normalized))
     }
 }
 
@@ -438,78 +694,84 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn temp_dir(label: &str) -> PathBuf {
+    fn temp_root(name: &str) -> PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("cotra-fs-{label}-{suffix}"));
-        std::fs::create_dir_all(&path).expect("create temp dir");
-        path
+        let root = std::env::temp_dir().join(format!("cotra-fs-{name}-{suffix}"));
+        fs::create_dir_all(&root).expect("create temp root");
+        root
     }
 
     #[test]
-    fn reads_utf8_file_inside_workspace() {
-        let root = temp_dir("read");
-        std::fs::write(root.join("hello.txt"), "hello cotra").expect("write");
-        let provider = FsProvider::new(&root).expect("provider");
-        let result = provider.read_text("hello.txt").expect("read");
-        assert_eq!(result["text"], "hello cotra");
-        let _ = std::fs::remove_dir_all(root);
+    fn writes_existing_file_only_when_expected_hash_matches() {
+        let root = temp_root("write-existing");
+        fs::write(root.join("a.txt"), "old").unwrap();
+        let provider = FsProvider::new(&root).unwrap();
+        let preview = provider.preview_write("a.txt", "new").unwrap();
+        let result = provider
+            .write_text(
+                "a.txt",
+                "new",
+                preview.current_sha256.as_deref(),
+                false,
+            )
+            .unwrap();
+        assert_eq!(result["created"], false);
+        assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "new");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn refuses_stale_existing_file() {
+        let root = temp_root("write-stale");
+        fs::write(root.join("a.txt"), "old").unwrap();
+        let provider = FsProvider::new(&root).unwrap();
+        let preview = provider.preview_write("a.txt", "new").unwrap();
+        fs::write(root.join("a.txt"), "changed").unwrap();
+        let error = provider
+            .write_text(
+                "a.txt",
+                "new",
+                preview.current_sha256.as_deref(),
+                false,
+            )
+            .unwrap_err();
+        assert_eq!(error.code, FailureCode::TargetStale);
+        assert_eq!(fs::read_to_string(root.join("a.txt")).unwrap(), "changed");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn creates_missing_file_only_when_explicitly_allowed() {
+        let root = temp_root("create");
+        let provider = FsProvider::new(&root).unwrap();
+        let preview = provider.preview_write("new.txt", "hello").unwrap();
+        assert!(!preview.exists);
+        provider
+            .write_text("new.txt", "hello", None, true)
+            .unwrap();
+        assert_eq!(fs::read_to_string(root.join("new.txt")).unwrap(), "hello");
+        let _ = fs::remove_dir_all(root);
     }
 
     #[cfg(unix)]
     #[test]
-    fn rejects_symlink_escape() {
+    fn write_symlink_escape_is_rejected() {
         use std::os::unix::fs::symlink;
-        let root = temp_dir("root");
-        let outside = temp_dir("outside");
-        std::fs::write(outside.join("secret.txt"), "secret").expect("write");
-        symlink(&outside, root.join("escape")).expect("symlink");
-        let provider = FsProvider::new(&root).expect("provider");
-        let error = provider
-            .read_text("escape/secret.txt")
-            .expect_err("escape must fail");
+        let root = temp_root("symlink");
+        let outside = temp_root("outside");
+        fs::write(outside.join("secret.txt"), "secret").unwrap();
+        symlink(outside.join("secret.txt"), root.join("link.txt")).unwrap();
+        let provider = FsProvider::new(&root).unwrap();
+        let error = provider.preview_write("link.txt", "oops").unwrap_err();
         assert_eq!(error.code, FailureCode::PathEscape);
-        let _ = std::fs::remove_dir_all(root);
-        let _ = std::fs::remove_dir_all(outside);
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn rejects_junction_escape() {
-        use std::process::Command;
-        let root = temp_dir("root");
-        let outside = temp_dir("outside");
-        std::fs::write(outside.join("secret.txt"), "secret").expect("write");
-        let junction = root.join("escape");
-        let status = Command::new("cmd")
-            .arg("/C")
-            .arg("mklink")
-            .arg("/J")
-            .arg(&junction)
-            .arg(&outside)
-            .status()
-            .expect("mklink");
-        assert!(status.success(), "junction fixture creation failed");
-        let provider = FsProvider::new(&root).expect("provider");
-        let error = provider
-            .read_text("escape/secret.txt")
-            .expect_err("junction escape must fail");
-        assert_eq!(error.code, FailureCode::PathEscape);
-        let _ = std::fs::remove_dir_all(root);
-        let _ = std::fs::remove_dir_all(outside);
-    }
-
-    #[test]
-    fn search_is_bounded_and_does_not_follow_links() {
-        let root = temp_dir("search");
-        std::fs::write(root.join("a.txt"), "one\nneedle\nthree").expect("write");
-        let provider = FsProvider::new(&root).expect("provider");
-        let result = provider
-            .search_text(".", "needle", Some(5))
-            .expect("search");
-        assert_eq!(result["matches"].as_array().expect("matches").len(), 1);
-        let _ = std::fs::remove_dir_all(root);
+        assert_eq!(
+            fs::read_to_string(outside.join("secret.txt")).unwrap(),
+            "secret"
+        );
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
     }
 }

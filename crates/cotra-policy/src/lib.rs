@@ -2,7 +2,7 @@ use cotra_contracts::{FailureCode, RequestEnvelope};
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
-pub const POLICY_REVISION: &str = "sg-000001-v1";
+pub const POLICY_REVISION: &str = "sg-000002-v1";
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -106,13 +106,15 @@ impl PolicyEngine {
                 | ("fs.list", "list")
                 | ("fs.read", "read")
                 | ("fs.search", "search")
+                | ("fs.write", "preview")
+                | ("fs.write", "write")
         );
 
         if !allowed {
             return Err(PolicyError::new(
                 FailureCode::CapabilityDenied,
                 format!(
-                    "capability/operation is not allowed in SG-000001: {}/{}",
+                    "capability/operation is not allowed in SG-000002: {}/{}",
                     request.capability, request.operation
                 ),
             ));
@@ -123,6 +125,25 @@ impl PolicyEngine {
                 PolicyError::new(FailureCode::InvalidRequest, "filesystem target is required")
             })?;
             validate_relative_target(target)?;
+        }
+
+        if request.capability == "fs.write" {
+            let content = request
+                .arguments
+                .get("content")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| {
+                    PolicyError::new(
+                        FailureCode::InvalidRequest,
+                        "fs.write requires arguments.content as UTF-8 text",
+                    )
+                })?;
+            if content.len() > 2 * 1024 * 1024 {
+                return Err(PolicyError::new(
+                    FailureCode::OutputLimit,
+                    "fs.write content exceeds 2 MiB limit",
+                ));
+            }
         }
 
         Ok(PolicyDecision {
@@ -144,7 +165,8 @@ pub fn validate_relative_target(target: &str) -> Result<(), PolicyError> {
     let bytes = portable.as_bytes();
     let drive_prefixed = bytes.len() >= 2 && bytes[1] == b':';
     let root_prefixed = portable.starts_with('\\');
-    let device_prefixed = portable.starts_with("\\\\?\\") || portable.starts_with("\\\\.\\");
+    let device_prefixed =
+        portable.starts_with("\\\\?\\") || portable.starts_with("\\\\.\\");
     if drive_prefixed || root_prefixed || device_prefixed {
         return Err(PolicyError::new(
             FailureCode::PathEscape,
@@ -243,6 +265,22 @@ mod tests {
         req.operation = "spawn".into();
         let error = engine.authorize(&req).expect_err("must be denied");
         assert_eq!(error.code, FailureCode::CapabilityDenied);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn write_requires_content() {
+        let root = temp_root();
+        let engine = PolicyEngine::new(vec![Workspace {
+            id: "default".into(),
+            root: root.clone(),
+        }])
+        .expect("policy");
+        let mut req = request("file.txt");
+        req.capability = "fs.write".into();
+        req.operation = "write".into();
+        let error = engine.authorize(&req).expect_err("missing content must fail");
+        assert_eq!(error.code, FailureCode::InvalidRequest);
         let _ = std::fs::remove_dir_all(root);
     }
 }
