@@ -1,0 +1,44 @@
+{
+  "id": "SG-000003",
+  "title": "Read-only Git provider",
+  "program": "COTRA-P02",
+  "state": "GRAIN",
+  "risk": "medium",
+  "created": "2026-09-24",
+  "base": "7d4003a1b6a82cac577c77e91b7d2606f49733f4",
+  "dependencies": ["SG-000001", "SG-000002"],
+  "objective": "Expose typed local Git status, diff, and log without generic shell or network authority.",
+  "scope": {
+    "include": ["git.status", "git.diff", "git.log", "workspace repo validation", "sanitized Git environment", "bounded output", "30 second timeout", "typed MCP tools"],
+    "exclude": ["branch/stage/commit/fetch/push", "network Git", "generic process execution", "PowerShell", "shell command strings", "hooks or arbitrary aliases"]
+  },
+  "authority_delta": {
+    "filesystem": "Read-only Git metadata/content inside trusted workspaces",
+    "process": "Internal fixed git executable and fixed subcommands only",
+    "network": "None",
+    "browser": "None",
+    "ui_input": "None",
+    "secrets": "No Cotra/tunnel secret variables inherited by Git",
+    "approval": "No change",
+    "privileged": "None"
+  },
+  "invariants": [
+    "No generic Git command or shell tool is exposed",
+    "Only rev-parse/status/diff/log fixed subcommands execute",
+    "Repository root must resolve inside the trusted workspace",
+    "Global/system Git config, fsmonitor, pager, external diff, textconv, and terminal prompting are disabled",
+    "Git output is bounded and commands time out",
+    "No network Git operation is exposed"
+  ],
+  "acceptance": [
+    {"id": "A1", "claim": "Status reports working tree state without mutation."},
+    {"id": "A2", "claim": "Diff is bounded and disables external diff/textconv."},
+    {"id": "A3", "claim": "Log returns bounded structured history."},
+    {"id": "A4", "claim": "Non-repositories and workspace escapes fail closed."},
+    {"id": "A5", "claim": "No client-selected executable, raw argv, shell, or network operation exists."},
+    {"id": "A6", "claim": "Windows and Ubuntu exact-head CI pass."}
+  ],
+  "required_tests": ["status/diff/log integration", "non-repository rejection", "workspace escape regression", "Windows native CI", "Ubuntu CI"],
+  "review": {"diffcipline": true, "jev_semantic_review": true, "alibaba_open_code_review": "where integrated", "security_review": true, "exact_head_ci": true},
+  "done_when": "Exact-head CI and security review pass, PR merges, and post-merge CI is green."
+}

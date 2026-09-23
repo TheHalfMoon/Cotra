@@ -3,6 +3,7 @@ use cotra_audit::{default_audit_path, AuditLogger};
 use cotra_contracts::{FailureCode, RequestEnvelope, ResponseEnvelope, INTERNAL_PROTOCOL_VERSION};
 use cotra_policy::{PolicyEngine, Workspace, POLICY_REVISION};
 use cotra_provider_fs::{FsProvider, ProviderError};
+use cotra_provider_git::{GitProvider, GitProviderError};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
@@ -28,7 +29,7 @@ fn run() -> Result<(), String> {
     let approval = LocalApprovalBroker;
 
     eprintln!(
-        "cotrad ready: protocol={} audit={} mode=SG-000002_APPROVED_WRITE",
+        "cotrad ready: protocol={} audit={} mode=SG-000003_READ_ONLY_GIT",
         INTERNAL_PROTOCOL_VERSION,
         audit.path().display()
     );
@@ -147,7 +148,7 @@ fn dispatch(
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
             "pid": std::process::id(),
-            "mode": "SG-000002_APPROVED_WRITE"
+            "mode": "SG-000003_READ_ONLY_GIT"
         })),
         ("workspace.get", "get") => {
             let configured = policy.workspace(&workspace.id).ok_or_else(|| {
@@ -160,7 +161,7 @@ fn dispatch(
                 "id": configured.id,
                 "root": configured.root,
                 "policy_revision": POLICY_REVISION,
-                "mode": "approved_write"
+                "mode": "approved_write_read_only_git"
             }))
         }
         ("fs.stat", "stat") => fs_provider(workspace)?.stat(target(request)?),
@@ -189,6 +190,24 @@ fn dispatch(
             Ok(fs_provider(workspace)?
                 .preview_write(target(request)?, content)?
                 .to_json())
+        }
+        ("git.status", "status") => git_result(git_provider(workspace)?.status(target(request)?)),
+        ("git.diff", "diff") => {
+            let staged = request
+                .arguments
+                .get("staged")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            git_result(git_provider(workspace)?.diff(target(request)?, staged))
+        }
+        ("git.log", "log") => {
+            let max_count = request
+                .arguments
+                .get("max_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(20)
+                .clamp(1, 100) as usize;
+            git_result(git_provider(workspace)?.log(target(request)?, max_count))
         }
         ("fs.write", "write") => {
             let content = content(request)?;
@@ -271,6 +290,18 @@ fn dispatch(
 
 fn fs_provider(workspace: &Workspace) -> Result<FsProvider, ProviderError> {
     FsProvider::new(&workspace.root)
+}
+
+fn git_provider(workspace: &Workspace) -> Result<GitProvider, ProviderError> {
+    GitProvider::new(&workspace.root).map_err(map_git_error)
+}
+
+fn git_result(result: Result<Value, GitProviderError>) -> Result<Value, ProviderError> {
+    result.map_err(map_git_error)
+}
+
+fn map_git_error(error: GitProviderError) -> ProviderError {
+    ProviderError::new(error.code, error.message)
 }
 
 fn target(request: &RequestEnvelope) -> Result<&str, ProviderError> {
