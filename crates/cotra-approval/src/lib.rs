@@ -134,6 +134,9 @@ mod tests {
     #[test]
     fn fixed_broker_can_approve() {
         let broker = FixedApprovalBroker(ApprovalDecision::Approved);
-        assert_eq!(broker.request(&prompt()).unwrap(), ApprovalDecision::Approved);
+        assert_eq!(
+            broker.request(&prompt()).unwrap(),
+            ApprovalDecision::Approved
+        );
     }
 }
