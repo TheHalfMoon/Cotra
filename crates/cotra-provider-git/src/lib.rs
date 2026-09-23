@@ -1,7 +1,7 @@
 use cotra_contracts::FailureCode;
 use serde_json::{json, Value};
 use std::ffi::OsString;
-use std::io::{Read, Result as IoResult};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -34,9 +34,7 @@ pub struct GitProvider {
 #[derive(Debug)]
 struct CommandOutput {
     stdout: String,
-    stderr: String,
     stdout_truncated: bool,
-    stderr_truncated: bool,
 }
 
 impl GitProvider {
@@ -261,7 +259,7 @@ impl GitProvider {
         let (stdout_bytes, stdout_truncated) = stdout_thread.join().map_err(|_| {
             GitProviderError::new(FailureCode::InternalError, "git stdout reader panicked")
         })??;
-        let (stderr_bytes, stderr_truncated) = stderr_thread.join().map_err(|_| {
+        let (stderr_bytes, _stderr_truncated) = stderr_thread.join().map_err(|_| {
             GitProviderError::new(FailureCode::InternalError, "git stderr reader panicked")
         })??;
 
@@ -283,9 +281,7 @@ impl GitProvider {
 
         Ok(CommandOutput {
             stdout,
-            stderr,
             stdout_truncated,
-            stderr_truncated,
         })
     }
 }
