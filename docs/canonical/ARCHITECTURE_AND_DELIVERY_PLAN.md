@@ -1035,3 +1035,171 @@ Implementation may begin when:
 - no blocking architecture/security gap remains.
 
 The first implementation packet is SG-000001: trusted read-only MCP path and policy skeleton.
+
+
+## 31. Client identity and v1 trust mode
+
+Cotra v1 is a single-owner local product.
+
+The first release does not pretend that an arbitrary MCP request contains a cryptographically meaningful human identity. Instead:
+
+- the configured tunnel/app connection is one remote client trust context;
+- Cotra creates its own local client_session_id for each connected MCP session;
+- local workspace grants and approvals remain authoritative;
+- remote annotations, display names, or page/tool descriptions never become identity proof;
+- multi-user enterprise delegation is deferred until an authenticated principal can be bound to local policy without guesswork.
+
+If future OpenAI product metadata exposes a stable authenticated principal suitable for policy, Cotra may bind it only through an explicit versioned adapter and tests.
+
+## 32. Protected Cotra state and local IPC
+
+Cotra installation/state locations are never ordinary workspaces.
+
+Protected classes:
+- Cotra binaries;
+- cotrad configuration;
+- policy database;
+- audit database;
+- approval state;
+- tunnel configuration/credentials;
+- internal IPC endpoints.
+
+Rules:
+- filesystem tools hard-deny protected Cotra state even when a parent path is otherwise trusted;
+- policy/trust changes use dedicated PRIVILEGED APIs, never general file write;
+- cotrad IPC uses Windows named pipes or equivalent local IPC with explicit ACLs;
+- authenticated session setup is separate from the MCP request itself;
+- the hardened service design validates peer identity and minimizes which local processes can call privileged methods;
+- agent-launched child processes must not receive Cotra IPC credentials/handles;
+- a same-user string blocklist is not accepted as the security boundary.
+
+Before EXECUTE is enabled, the implementation must prove that the selected restricted-token/service-identity model prevents ordinary agent-spawned children from directly changing Cotra protected state or forging approvals.
+
+## 33. Long-running operations and reconnect semantics
+
+Cotra distinguishes short tool calls from durable local operations.
+
+Operation states:
+- REQUESTED
+- AUTHORIZED
+- WAITING_APPROVAL
+- QUEUED
+- RUNNING
+- CANCELLING
+- COMPLETED
+- FAILED
+- CANCELLED
+- INDETERMINATE
+
+Long operations receive operation_id.
+
+Required behavior:
+- status can be queried after MCP reconnect;
+- transport disconnect does not silently convert RUNNING to FAILED;
+- policy decides whether a disconnect cancels a specific operation class;
+- cancellation requests are idempotent;
+- cancellation is not reported complete until termination/postcondition evidence exists;
+- crash recovery marks uncertain work INDETERMINATE rather than inventing success;
+- progress payloads are bounded;
+- concurrency and queue limits prevent one client from exhausting the machine.
+
+## 34. Privacy, retention, and support data
+
+Cotra is local-first but local logs can still contain sensitive metadata.
+
+Defaults:
+- no product telemetry;
+- no continuous clipboard capture;
+- no continuous screenshot capture;
+- no hidden browser-history collection;
+- audit stores structured summaries rather than arbitrary full content where possible;
+- secrets are redacted before persistence;
+- screenshots are retained only when required for explicit evidence and under configurable retention;
+- command output uses size/retention limits;
+- support export is explicit, previewable, and redacted.
+
+The user can purge:
+- operation history;
+- screenshots/evidence artifacts;
+- cached browser automation state;
+- local audit data subject to any chosen tamper-evidence policy.
+
+Security-critical configuration changes remain separately recorded when policy requires it.
+
+## 35. WSL boundary
+
+WSL is a separate execution/filesystem trust boundary.
+
+Do not treat WSL paths or processes as ordinary Windows paths by string conversion.
+
+Future typed capabilities:
+- wsl.list_distros
+- wsl.exec
+- wsl.workspace.map
+- wsl.git.*
+
+Rules:
+- explicit distro allowlist;
+- argv-style execution through wsl.exe --distribution <name> --exec -- <argv>;
+- no implicit shell unless powershell/shell-equivalent authority is explicitly granted;
+- Windows workspace and WSL workspace mappings are explicit;
+- \wsl$ / \wsl.localhost paths are evaluated under a distinct provider policy;
+- network effects inside WSL are classified as network authority;
+- Cotra protected Windows state remains inaccessible through WSL paths where enforceable;
+- WSL child environment does not inherit tunnel or Cotra secrets.
+
+WSL support is not part of SG-000001. It belongs after the Windows process security model is proven.
+
+## 36. Visual and screenshot safety
+
+Default screenshot scope is the smallest useful target:
+1. target window;
+2. target monitor region;
+3. full monitor only when necessary;
+4. full desktop only by explicit capability.
+
+Before a screenshot is returned:
+- Cotra protected approval surfaces are excluded/redacted where feasible;
+- evidence records scope and capture time;
+- stale visual evidence has a short lifetime for coordinate actions;
+- multi-monitor coordinates include monitor identity and DPI-aware transforms;
+- a coordinate action cannot be replayed against a materially changed screen without revalidation.
+
+## 37. Download and untrusted-file handling
+
+Browser/network downloads are untrusted inputs.
+
+Requirements:
+- destination must be an approved workspace;
+- preserve or add platform-origin metadata when practical;
+- never auto-execute a downloaded file;
+- executable/script/package launch is a new EXECUTE request;
+- archive extraction re-applies workspace path traversal protections;
+- filename/content-type mismatch is visible in evidence;
+- package-manager installation is EXECUTE + WRITE + NETWORK and follows the same destination/approval model.
+
+## 38. Project license decision
+
+Planning recommendation: Apache License 2.0.
+
+Reason:
+- permissive open-source distribution;
+- explicit patent grant;
+- compatible at the project level with the MIT and Apache-2.0 source families currently being evaluated, subject to preserving upstream notices and file-level obligations.
+
+This planning branch includes the Apache-2.0 license text. No donor source is imported by that act.
+
+## 39. Architecture review result
+
+The architecture is considered ready to start SG-000001 when this planning PR is accepted.
+
+No unresolved design question blocks the read-only first grain.
+
+Later grains still require proof before their authority can be enabled:
+- EXECUTE requires restricted-child/protected-state evidence;
+- STRONG approval requires a proven user-presence mechanism;
+- browser personal-profile use requires origin and approval tests;
+- UI coordinate control requires protected-surface and stale-frame tests;
+- WSL requires separate provider policy.
+
+These are staged proof obligations, not hidden implementation assumptions.
