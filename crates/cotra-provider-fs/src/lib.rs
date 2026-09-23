@@ -54,12 +54,17 @@ impl WritePreview {
         })
     }
 
-    pub fn approval_digest(&self) -> String {
+    pub fn approval_digest(&self, workspace_id: &str, policy_revision: &str) -> String {
         let current = self.current_sha256.as_deref().unwrap_or("<missing>");
         sha256_hex(
             format!(
-                "fs.write\n{}\n{}\n{}\n{}",
-                self.relative, current, self.new_sha256, self.bytes
+                "fs.write\n{}\n{}\n{}\n{}\n{}\n{}",
+                workspace_id,
+                policy_revision,
+                self.relative,
+                current,
+                self.new_sha256,
+                self.bytes
             )
             .as_bytes(),
         )
@@ -700,6 +705,21 @@ mod tests {
         let root = std::env::temp_dir().join(format!("cotra-fs-{name}-{suffix}"));
         fs::create_dir_all(&root).expect("create temp root");
         root
+    }
+
+    
+    #[test]
+    fn approval_digest_binds_workspace_and_policy_revision() {
+        let preview = WritePreview {
+            relative: "a.txt".into(),
+            exists: true,
+            current_sha256: Some("current".into()),
+            new_sha256: "next".into(),
+            bytes: 4,
+        };
+        let base = preview.approval_digest("workspace-a", "policy-1");
+        assert_ne!(base, preview.approval_digest("workspace-b", "policy-1"));
+        assert_ne!(base, preview.approval_digest("workspace-a", "policy-2"));
     }
 
     #[test]
