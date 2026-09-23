@@ -192,8 +192,8 @@ fn canonical(path: &Path, label: &str) -> Result<PathBuf, String> {
 
 fn configured_workspace_roots() -> Result<Vec<PathBuf>, String> {
     if let Ok(raw) = env::var("COTRA_WORKSPACES_JSON") {
-        let values: Vec<WorkspaceConfig> = serde_json::from_str(&raw)
-            .map_err(|e| format!("parse COTRA_WORKSPACES_JSON: {e}"))?;
+        let values: Vec<WorkspaceConfig> =
+            serde_json::from_str(&raw).map_err(|e| format!("parse COTRA_WORKSPACES_JSON: {e}"))?;
         return Ok(values.into_iter().map(|v| v.root).collect());
     }
     if let Some(root) = env::var_os("COTRA_WORKSPACE_ROOT") {
@@ -301,7 +301,10 @@ mod tests {
         let (mut cfg, dir) = config();
         let key = file(&cfg.workspace_roots[0], "bad-key", "secret");
         cfg.runtime_key_file = key;
-        assert!(cfg.validate().unwrap_err().contains("outside every trusted"));
+        assert!(cfg
+            .validate()
+            .unwrap_err()
+            .contains("outside every trusted"));
         let _ = fs::remove_dir_all(dir);
     }
 
