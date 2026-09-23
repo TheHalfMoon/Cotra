@@ -57,9 +57,11 @@ fn run() -> Result<(), String> {
 
         serde_json::to_writer(&mut stdout, &response)
             .map_err(|error| format!("serialize response: {error}"))?;
-        stdout.write_all(b"\n")
+        stdout
+            .write_all(b"\n")
             .map_err(|error| format!("write response: {error}"))?;
-        stdout.flush()
+        stdout
+            .flush()
             .map_err(|error| format!("flush response: {error}"))?;
     }
 
@@ -70,8 +72,12 @@ fn load_policy() -> Result<PolicyEngine, String> {
     let workspaces = if let Ok(raw) = std::env::var("COTRA_WORKSPACES_JSON") {
         let configs: Vec<WorkspaceConfig> = serde_json::from_str(&raw)
             .map_err(|error| format!("parse COTRA_WORKSPACES_JSON: {error}"))?;
-        configs.into_iter()
-            .map(|config| Workspace { id: config.id, root: config.root })
+        configs
+            .into_iter()
+            .map(|config| Workspace {
+                id: config.id,
+                root: config.root,
+            })
             .collect()
     } else if let Some(root) = std::env::var_os("COTRA_WORKSPACE_ROOT") {
         vec![Workspace {
@@ -134,10 +140,12 @@ fn dispatch(
             "mode": "SG-000001_READ_ONLY"
         })),
         ("workspace.get", "get") => {
-            let configured = policy.workspace(&workspace.id).ok_or_else(|| ProviderError {
-                code: FailureCode::WorkspaceDenied,
-                message: "workspace disappeared during request".into(),
-            })?;
+            let configured = policy
+                .workspace(&workspace.id)
+                .ok_or_else(|| ProviderError {
+                    code: FailureCode::WorkspaceDenied,
+                    message: "workspace disappeared during request".into(),
+                })?;
             Ok(json!({
                 "id": configured.id,
                 "root": configured.root,
@@ -149,13 +157,17 @@ fn dispatch(
         ("fs.list", "list") => fs_provider(workspace)?.list(target(request)?),
         ("fs.read", "read") => fs_provider(workspace)?.read_text(target(request)?),
         ("fs.search", "search") => {
-            let query = request.arguments.get("query")
+            let query = request
+                .arguments
+                .get("query")
                 .and_then(Value::as_str)
                 .ok_or_else(|| ProviderError {
                     code: FailureCode::InvalidRequest,
                     message: "fs.search requires arguments.query".into(),
                 })?;
-            let max_results = request.arguments.get("max_results")
+            let max_results = request
+                .arguments
+                .get("max_results")
                 .and_then(Value::as_u64)
                 .map(|value| value as usize);
             fs_provider(workspace)?.search_text(target(request)?, query, max_results)
