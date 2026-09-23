@@ -62,7 +62,12 @@ impl GitProvider {
         let repo = self.repository_root(relative)?;
         let output = self.run_git(
             &repo,
-            &["status", "--porcelain=v2", "--branch", "--untracked-files=all"],
+            &[
+                "status",
+                "--porcelain=v2",
+                "--branch",
+                "--untracked-files=all",
+            ],
         )?;
         Ok(json!({
             "repository_root": self.relative_display(&repo),
@@ -126,12 +131,13 @@ impl GitProvider {
     }
 
     fn repository_root(&self, relative: &str) -> Result<PathBuf, GitProviderError> {
-        let candidate = std::fs::canonicalize(self.workspace_root.join(relative)).map_err(|error| {
-            GitProviderError::new(
-                FailureCode::InvalidRequest,
-                format!("resolve Git target: {error}"),
-            )
-        })?;
+        let candidate =
+            std::fs::canonicalize(self.workspace_root.join(relative)).map_err(|error| {
+                GitProviderError::new(
+                    FailureCode::InvalidRequest,
+                    format!("resolve Git target: {error}"),
+                )
+            })?;
         self.ensure_within(&candidate)?;
         if !candidate.is_dir() {
             return Err(GitProviderError::new(
@@ -267,7 +273,9 @@ impl GitProvider {
                 FailureCode::InvalidRequest,
                 format!(
                     "git exited with {}: {}",
-                    status.code().map_or_else(|| "signal".into(), |code| code.to_string()),
+                    status
+                        .code()
+                        .map_or_else(|| "signal".into(), |code| code.to_string()),
                     stderr.trim()
                 ),
             ));
