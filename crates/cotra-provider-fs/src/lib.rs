@@ -59,12 +59,7 @@ impl WritePreview {
         sha256_hex(
             format!(
                 "fs.write\n{}\n{}\n{}\n{}\n{}\n{}",
-                workspace_id,
-                policy_revision,
-                self.relative,
-                current,
-                self.new_sha256,
-                self.bytes
+                workspace_id, policy_revision, self.relative, current, self.new_sha256, self.bytes
             )
             .as_bytes(),
         )
@@ -707,7 +702,6 @@ mod tests {
         root
     }
 
-    
     #[test]
     fn approval_digest_binds_workspace_and_policy_revision() {
         let preview = WritePreview {
