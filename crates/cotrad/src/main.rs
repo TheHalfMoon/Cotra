@@ -186,7 +186,9 @@ fn dispatch(
         }
         ("fs.write", "preview") => {
             let content = content(request)?;
-            Ok(fs_provider(workspace)?.preview_write(target(request)?, content)?.to_json())
+            Ok(fs_provider(workspace)?
+                .preview_write(target(request)?, content)?
+                .to_json())
         }
         ("fs.write", "write") => {
             let content = content(request)?;
