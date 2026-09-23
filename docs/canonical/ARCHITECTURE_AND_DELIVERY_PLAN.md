@@ -1180,7 +1180,7 @@ Requirements:
 
 ## 38. Project license decision
 
-Planning recommendation: Apache License 2.0.
+Planning decision in this PR: Apache License 2.0.
 
 Reason:
 - permissive open-source distribution;
