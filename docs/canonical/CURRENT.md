@@ -2,53 +2,18 @@
 
 Status: IMPLEMENTATION
 Date: 2026-09-24
-
-## Canonical main
-
-Current base for active work:
-7d4003a1b6a82cac577c77e91b7d2606f49733f4
+Canonical base: 7d4003a1b6a82cac577c77e91b7d2606f49733f4
 
 SG-000001 and SG-000002 are COMPLETE_CANONICAL.
+SG-000002 exact-head CI: 35923989601 (5/5 SUCCESS).
+SG-000002 post-merge CI: 35924151711 (5/5 SUCCESS).
 
-SG-000002 evidence:
-- exact-head CI run 35923989601: 5/5 SUCCESS;
-- merge SHA: 7d4003a1b6a82cac577c77e91b7d2606f49733f4;
-- post-merge CI run 35924151711: 5/5 SUCCESS.
+Canonical capabilities: system.status, workspace.get, fs.stat/list/read/search, and approved fs.write preview/write.
 
-Canonical capabilities:
-- system.status/get
-- workspace.get/get
-- fs.stat/stat
-- fs.list/list
-- fs.read/read
-- fs.search/search
-- fs.write/preview
-- fs.write/write with independent local approval
+Active grain: SG-000003 — Read-only Git provider
+Branch: feat/sg-000003-read-only-git
+Purpose: typed git.status/diff/log with fixed local Git invocation, bounded output, sanitized child environment, and no network or generic shell authority.
 
-## Active grain
-
-SG-000003 — Read-only Git provider
-
-Branch:
-feat/sg-000003-read-only-git
-
-Purpose:
-- complete COTRA-P02 read-only Git;
-- expose typed status/diff/log only;
-- keep Git invocation internal and fixed;
-- sanitize the child environment;
-- prevent network or generic shell authority.
-
-## Architecture decision
-
-Cotra is standalone.
-
-Kernux is not a dependency and must not be modified as part of Cotra work unless the founder explicitly creates a future integration task.
-
-## Evidence rule
-
-Never claim a capability PROVEN unless its required test and platform evidence exists.
-
-## Language rule
-
-Repository content, code, comments, commands, reports, specs, PR bodies, reviewer responses, and other technical work are English only.
+Architecture: Cotra is standalone; Kernux is not a dependency.
+Evidence rule: never claim PROVEN without required platform/test evidence.
+Language rule: all repository technical content is English only.
