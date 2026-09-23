@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --workspace
+
+  node:
+    name: Node / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install
+        run: npm install --ignore-scripts
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+
+  governance:
+    name: Governance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diff check
+        run: git diff --check
+      - name: Validate SpecGrain JSON
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          specs = sorted(Path(".specgrain/specs").glob("*.json"))
+          assert specs, "no SpecGrain files"
+          for path in specs:
+              data = json.loads(path.read_text(encoding="utf-8"))
+              assert data["id"].startswith("SG-")
+              assert data["state"] in {"GRAIN", "PROVEN", "CLOSED"}
+              assert data.get("acceptance")
+          print(f"validated {len(specs)} SpecGrain files")
