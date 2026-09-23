@@ -125,7 +125,10 @@ impl PolicyEngine {
 
         if request.capability.starts_with("fs.") || request.capability.starts_with("git.") {
             let target = request.target.as_deref().ok_or_else(|| {
-                PolicyError::new(FailureCode::InvalidRequest, "workspace-relative target is required")
+                PolicyError::new(
+                    FailureCode::InvalidRequest,
+                    "workspace-relative target is required",
+                )
             })?;
             validate_relative_target(target)?;
         }
