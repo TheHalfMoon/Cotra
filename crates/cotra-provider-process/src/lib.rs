@@ -482,7 +482,6 @@ mod windows_appcontainer {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobObjectProbe {
     pub job_created: bool,
