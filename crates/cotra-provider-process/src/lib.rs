@@ -2046,6 +2046,33 @@ mod contained_launch_tests {
         assert_eq!(actual, expected);
     }
 
+    fn bounded_child_diagnostic(label: &str, bytes: &[u8]) -> String {
+        let mut text = String::new();
+        for byte in bytes.iter().copied().take(512) {
+            match byte {
+                b'\n' => text.push_str("\\n"),
+                b'\r' => text.push_str("\\r"),
+                b'\t' => text.push_str("\\t"),
+                0x20..=0x7e => text.push(char::from(byte)),
+                _ => text.push_str(&format!("\\x{byte:02x}")),
+            }
+        }
+        let lower = text.to_ascii_lowercase();
+        for marker in [
+            "password",
+            "token",
+            "secret",
+            "credential",
+            "api_key",
+            "private_key",
+        ] {
+            if lower.contains(marker) {
+                return format!("{label}=<redacted:{}>", bytes.len());
+            }
+        }
+        format!("{label}[{}]={text}", bytes.len())
+    }
+
     #[test]
     fn windows_private_qualification_executes_bounded_argv_with_quiescent_job() {
         let suffix = SystemTime::now()
@@ -2085,7 +2112,13 @@ mod contained_launch_tests {
         assert!(result.appcontainer_verified);
         assert!(result.assigned_to_job_before_resume);
         assert!(result.job_quiescent);
-        assert_eq!(result.exit_code, 0);
+        assert_eq!(
+            result.exit_code,
+            0,
+            "private fixture diagnostic: {} {}",
+            bounded_child_diagnostic("stdout", &result.stdout),
+            bounded_child_diagnostic("stderr", &result.stderr),
+        );
         assert!(!result.stdout.is_empty());
         assert!(result.stderr.is_empty());
         let _ = std::fs::remove_dir_all(workspace);
