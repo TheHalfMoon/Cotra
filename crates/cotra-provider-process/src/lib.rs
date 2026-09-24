@@ -407,6 +407,12 @@ mod windows_appcontainer {
         ) -> Hresult;
 
         fn DeleteAppContainerProfile(app_container_name: *const u16) -> Hresult;
+        fn CreateEnvironmentBlock(
+            environment: *mut *mut c_void,
+            token: Handle,
+            inherit: i32,
+        ) -> i32;
+        fn DestroyEnvironmentBlock(environment: *mut c_void) -> i32;
     }
 
     #[link(name = "advapi32")]
@@ -1019,6 +1025,39 @@ mod windows_contained_launch {
         }
     }
 
+    struct SystemEnvironmentBlock(*mut c_void);
+
+    impl SystemEnvironmentBlock {
+        fn create() -> Result<Self, ExecutionPlanError> {
+            let mut environment = ptr::null_mut();
+            let created =
+                unsafe { CreateEnvironmentBlock(&mut environment, ptr::null_mut(), 0) };
+            if created == 0 {
+                return Err(last_error("CreateEnvironmentBlock(system-only)"));
+            }
+            if environment.is_null() {
+                return Err(ExecutionPlanError::new(
+                    "CreateEnvironmentBlock returned a null system environment",
+                ));
+            }
+            Ok(Self(environment))
+        }
+
+        fn raw(&self) -> *mut c_void {
+            self.0
+        }
+    }
+
+    impl Drop for SystemEnvironmentBlock {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe {
+                    DestroyEnvironmentBlock(self.0);
+                }
+            }
+        }
+    }
+
     struct JobObject {
         handle: OwnedHandle,
     }
@@ -1102,8 +1141,7 @@ mod windows_contained_launch {
 
             let application = wide(executable.as_os_str());
             let mut command_line = command_line_for_cmd(&executable);
-            let current_directory = wide(system32.as_os_str());
-            let mut environment = minimal_environment_block(&system_root);
+            let environment = SystemEnvironmentBlock::create()?;
 
             let mut process_information: ProcessInformation = unsafe { mem::zeroed() };
             let created = unsafe {
@@ -1117,8 +1155,8 @@ mod windows_contained_launch {
                         | CREATE_UNICODE_ENVIRONMENT
                         | EXTENDED_STARTUPINFO_PRESENT
                         | CREATE_NO_WINDOW,
-                    environment.as_mut_ptr().cast(),
-                    current_directory.as_ptr(),
+                    environment.raw(),
+                    ptr::null(),
                     (&startup as *const StartupInfoExW).cast(),
                     &mut process_information,
                 )
@@ -1270,50 +1308,6 @@ mod windows_contained_launch {
         command.extend(" /d /q /c exit 0".encode_utf16());
         command.push(0);
         command
-    }
-
-    fn minimal_environment_block(system_root: &OsStr) -> Vec<u16> {
-        const ESSENTIAL_KEYS: &[&str] = &[
-            "ComSpec",
-            "PATH",
-            "PATHEXT",
-            "SystemRoot",
-            "TEMP",
-            "TMP",
-            "WINDIR",
-        ];
-
-        let mut entries = Vec::<(String, std::ffi::OsString)>::new();
-        for key in ESSENTIAL_KEYS {
-            let value =
-                if key.eq_ignore_ascii_case("SystemRoot") || key.eq_ignore_ascii_case("WINDIR") {
-                    Some(system_root.to_os_string())
-                } else {
-                    std::env::var_os(key)
-                };
-            if let Some(value) = value {
-                entries.push(((*key).to_owned(), value));
-            }
-        }
-        entries.sort_by(|left, right| {
-            left.0
-                .to_ascii_lowercase()
-                .cmp(&right.0.to_ascii_lowercase())
-        });
-
-        let mut environment = Vec::new();
-        for (key, value) in entries {
-            push_environment_entry(&mut environment, &key, &value);
-        }
-        environment.push(0);
-        environment
-    }
-
-    fn push_environment_entry(buffer: &mut Vec<u16>, key: &str, value: &OsStr) {
-        buffer.extend(key.encode_utf16());
-        buffer.push('=' as u16);
-        buffer.extend(value.encode_wide());
-        buffer.push(0);
     }
 
     fn wide(value: &OsStr) -> Vec<u16> {
