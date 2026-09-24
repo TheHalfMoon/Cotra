@@ -2,15 +2,15 @@
 
 Status: IMPLEMENTATION
 Date: 2026-09-24
-Canonical main: fe3c5453b1b0b44b2e6209e3087c197e4a78c907
+Canonical main: ed5cd2be9acd7aac93754965d055c82f77a01884
 
-SG-000001 through SG-000006 are COMPLETE_CANONICAL.
+SG-000001 through SG-000007 are COMPLETE_CANONICAL.
 
-SG-000006:
-- exact-head CI 35970657031 — 5/5 SUCCESS
-- merge fe3c5453b1b0b44b2e6209e3087c197e4a78c907
-- post-merge CI 35970806759 — 5/5 SUCCESS
-- native Windows AppContainer create/derive/delete lifecycle proven
+SG-000007:
+- exact-head CI 35971171993 — SUCCESS
+- merge ed5cd2be9acd7aac93754965d055c82f77a01884
+- post-merge CI 35971323866 — SUCCESS
+- native Windows Job Object create/configure/close lifecycle proven
 
 Canonical capabilities:
 - system.status
@@ -21,19 +21,28 @@ Canonical capabilities:
 - secure tunnel-client supervisor with file-referenced runtime credential isolation
 - internal protected execution planning contract
 - native Windows AppContainer profile primitive qualified
+- native Windows Job Object kill-on-close primitive qualified
 
 Live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
 
 Active grain:
-SG-000007 — Windows Job Object lifecycle qualification
-Branch:
-feat/sg-000007-job-object-probe
+SG-000008 — Contained AppContainer child launch qualification
 
-SG-000007 qualifies Job Object creation, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE configuration, and handle cleanup. It launches no child process and exposes no new MCP authority.
+Branch:
+feat/sg-000008-contained-launch-probe
+
+SG-000008 must prove the sequence:
+- zero-capability AppContainer child created suspended
+- AppContainer token verified
+- child assigned to kill-on-close Job Object
+- Job membership verified before resume
+- child resumed and observed to bounded completion
+- profile/handles cleaned up
 
 Still denied / absent:
-- process.spawn
+- process.spawn MCP authority
 - PowerShell
+- arbitrary executable launch
 - browser automation
 - UI automation/input
 - elevation
