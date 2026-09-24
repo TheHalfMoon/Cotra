@@ -338,7 +338,6 @@ mod tests {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppContainerProbe {
     pub profile_created: bool,
