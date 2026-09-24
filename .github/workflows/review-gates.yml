@@ -120,17 +120,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone https://github.com/devagrawal09/jev-review.git .review-tools/jev-review
-          git -C .review-tools/jev-review checkout --detach "$JEV_REVIEW_SHA"
-          npm --prefix .review-tools/jev-review ci
-          printf 'TYPESAFE_API_KEY=%s\n' "$TYPESAFE_API_KEY" > .review-tools/jev-review/.env
-          chmod 600 .review-tools/jev-review/.env
+          JEV_DIR="$RUNNER_TEMP/jev-review"
+          git clone https://github.com/devagrawal09/jev-review.git "$JEV_DIR"
+          git -C "$JEV_DIR" checkout --detach "$JEV_REVIEW_SHA"
+          npm --prefix "$JEV_DIR" ci
+          printf 'TYPESAFE_API_KEY=%s\n' "$TYPESAFE_API_KEY" > "$JEV_DIR/.env"
+          chmod 600 "$JEV_DIR/.env"
       - name: Run Jev exact-diff review
         shell: bash
         run: |
           set -euo pipefail
-          trap 'rm -f .review-tools/jev-review/.env' EXIT
-          npm --prefix .review-tools/jev-review run review:changes -- "$GITHUB_WORKSPACE" > jev-review.json
+          JEV_DIR="$RUNNER_TEMP/jev-review"
+          trap 'rm -f "$JEV_DIR/.env"' EXIT
+          npm --prefix "$JEV_DIR" run review:changes -- "$GITHUB_WORKSPACE" > jev-review.json
           cat jev-review.json
       - uses: actions/upload-artifact@v4
         if: always()
