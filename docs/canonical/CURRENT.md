@@ -2,21 +2,15 @@
 
 Status: IMPLEMENTATION
 Date: 2026-09-24
-Canonical main: 0f71ca47b32f08045f83d194497aa49daad2d4de
+Canonical main: fe3c5453b1b0b44b2e6209e3087c197e4a78c907
 
-SG-000001 through SG-000005 are merged.
+SG-000001 through SG-000006 are COMPLETE_CANONICAL.
 
-SG-000004:
-- exact-head CI 35969551340 — 5/5 SUCCESS
-- merge 4aa28b128a27d21cf6fa768ca34d44db4b3b39cc
-- post-merge CI 35969805332 — 5/5 SUCCESS
-- COMPLETE_CANONICAL
-
-SG-000005:
-- exact-head CI 35970146506 — 5/5 SUCCESS
-- merge 0f71ca47b32f08045f83d194497aa49daad2d4de
-- post-merge CI 35970291619 — 5/5 SUCCESS
-- COMPLETE_CANONICAL
+SG-000006:
+- exact-head CI 35970657031 — 5/5 SUCCESS
+- merge fe3c5453b1b0b44b2e6209e3087c197e4a78c907
+- post-merge CI 35970806759 — 5/5 SUCCESS
+- native Windows AppContainer create/derive/delete lifecycle proven
 
 Canonical capabilities:
 - system.status
@@ -25,16 +19,17 @@ Canonical capabilities:
 - approved fs.write preview/write
 - git.status/diff/log
 - secure tunnel-client supervisor with file-referenced runtime credential isolation
-- internal protected execution planning contract (not externally exposed)
+- internal protected execution planning contract
+- native Windows AppContainer profile primitive qualified
 
 Live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
 
 Active grain:
-SG-000006 — Windows AppContainer primitive qualification
+SG-000007 — Windows Job Object lifecycle qualification
 Branch:
-feat/sg-000006-appcontainer-probe
+feat/sg-000007-job-object-probe
 
-SG-000006 qualifies only the Windows AppContainer profile lifecycle. It launches no child process and exposes no new MCP authority.
+SG-000007 qualifies Job Object creation, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE configuration, and handle cleanup. It launches no child process and exposes no new MCP authority.
 
 Still denied / absent:
 - process.spawn
