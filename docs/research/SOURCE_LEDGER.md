@@ -263,6 +263,49 @@ CONCEPT ONLY.
 
 Cotra independently implements its bounded qualification probe. No rappct implementation source is copied. The source was consulted after the first native Windows launch returned Win32 error 203; its diagnostics informed the investigation. Cotra's repaired implementation is based on Microsoft AppContainer documentation requiring LOCALAPPDATA/TEMP/TMP profile redirection and uses an independently written fixed safe-name environment allowlist.
 
+
+
+### alibaba/open-code-review
+
+Pin:
+v1.12.9
+
+Release commit/source:
+https://github.com/alibaba/open-code-review/releases/tag/v1.12.9
+
+Upstream license:
+Apache-2.0
+
+Role:
+- deterministic review file selection and rule resolution;
+- Delegation Mode qualification without an OCR-managed LLM credential;
+- review evidence generation for Cotra implementation PRs.
+
+Integration:
+EXTERNAL REVIEW TOOL. NO SOURCE COPIED.
+
+Cotra runs `ocr delegate preview --format json` and `ocr delegate rule --format json` against the exact PR base/head range. OCR Delegation Mode does not itself constitute the semantic judgment; the host reviewer must review every OCR-selected file under the resolved rules.
+
+### devagrawal09/jev-review
+
+Pin:
+31f89602797fb7bea007f8a480bf368bf564954e
+
+Default branch:
+main
+
+Upstream license:
+MIT
+
+Role:
+- TypeSafe Jev staged semantic/security code review;
+- exact-diff review evidence.
+
+Integration:
+EXTERNAL REVIEW TOOL. NO SOURCE COPIED.
+
+Cotra checks out the PR base, materializes the exact base..head diff into the working tree, then runs Jev Review against that working diff. A TypeSafe API key is required. Missing credentials fail the Jev gate explicitly rather than being treated as a pass.
+
 ## Source-use decision matrix
 
 openai/tunnel-client:
