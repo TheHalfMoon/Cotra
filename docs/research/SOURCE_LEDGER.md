@@ -261,7 +261,7 @@ Role:
 Reuse classification for SG-000008:
 CONCEPT ONLY.
 
-Cotra independently implements its bounded qualification probe. No rappct implementation source is copied. The source was consulted after the first native Windows launch returned Win32 error 203; its diagnostics informed the investigation. Cotra's repaired implementation uses Microsoft's CreateEnvironmentBlock(NULL, FALSE) system-only environment path rather than copying rappct's environment implementation.
+Cotra independently implements its bounded qualification probe. No rappct implementation source is copied. The source was consulted after the first native Windows launch returned Win32 error 203; its diagnostics informed the investigation. Cotra's repaired implementation is based on Microsoft AppContainer documentation requiring LOCALAPPDATA/TEMP/TMP profile redirection and uses an independently written fixed safe-name environment allowlist.
 
 ## Source-use decision matrix
 
