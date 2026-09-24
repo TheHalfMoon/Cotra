@@ -1859,19 +1859,75 @@ mod windows_contained_launch {
             Ok(child) => child,
             Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
         };
+        let mut descendant = if matches!(
+            mode,
+            PrivateExecutionMode::Timeout
+                | PrivateExecutionMode::StdoutLimit
+                | PrivateExecutionMode::StderrLimit
+        ) {
+            let descendant_argv = match mode {
+                PrivateExecutionMode::Timeout => vec![
+                    "--exact".to_owned(),
+                    "contained_launch_tests::private_timeout_descendant".to_owned(),
+                    "--nocapture".to_owned(),
+                ],
+                PrivateExecutionMode::StdoutLimit | PrivateExecutionMode::StderrLimit => vec![
+                    "--exact".to_owned(),
+                    "contained_launch_tests::private_output_descendant".to_owned(),
+                    "--nocapture".to_owned(),
+                ],
+                PrivateExecutionMode::Success => unreachable!(),
+            };
+            let mut descendant_plan = plan.clone();
+            descendant_plan.argv = descendant_argv;
+            Some(
+                match ChildProcess::create_suspended_with_pipes(
+                    profile.sid(),
+                    &descendant_plan,
+                    &stdout_write,
+                    &stderr_write,
+                ) {
+                    Ok(descendant) => descendant,
+                    Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
+                },
+            )
+        } else {
+            None
+        };
         drop(stdout_write);
         drop(stderr_write);
-        if let Err(error) = job.assign_before_resume(&child) {
+        if let Some(error) = job.assign_before_resume(&child).err() {
             child.terminate_best_effort();
             return Err(PrivateExecutionFailure::Provider(error.message));
+        }
+        if let Some(descendant_process) = descendant.as_mut() {
+            if let Err(error) = job.assign_before_resume(descendant_process) {
+                child.terminate_best_effort();
+                descendant_process.terminate_best_effort();
+                return Err(PrivateExecutionFailure::Provider(error.message));
+            }
         }
         if let Err(error) = child.verify_appcontainer_token() {
             child.terminate_best_effort();
             return Err(PrivateExecutionFailure::Provider(error.message));
         }
+        if let Some(descendant_process) = descendant.as_mut() {
+            if let Err(error) = descendant_process.verify_appcontainer_token() {
+                child.terminate_best_effort();
+                descendant_process.terminate_best_effort();
+                return Err(PrivateExecutionFailure::Provider(error.message));
+            }
+        }
         if let Err(error) = child.resume() {
             child.terminate_best_effort();
             return Err(PrivateExecutionFailure::Provider(error.message));
+        }
+        if let Some(descendant_process) = descendant.as_mut() {
+            if let Err(error) = descendant_process.resume() {
+                child.terminate_best_effort();
+                descendant_process.terminate_best_effort();
+                return Err(PrivateExecutionFailure::Provider(error.message));
+            }
         }
         let started = std::time::Instant::now();
         let mut stdout = Vec::new();
@@ -2251,16 +2307,7 @@ mod contained_launch_tests {
     #[test]
     fn private_timeout_fixture_child() {
         if std::env::args().any(|argument| argument == "--exact") {
-            let mut descendant =
-                std::process::Command::new(std::env::current_exe().expect("fixture executable"))
-                    .args([
-                        "--exact",
-                        "contained_launch_tests::private_timeout_descendant",
-                    ])
-                    .spawn()
-                    .expect("spawn timeout descendant");
             std::thread::sleep(Duration::from_secs(30));
-            let _ = descendant.wait();
         }
     }
 
@@ -2274,40 +2321,22 @@ mod contained_launch_tests {
     #[test]
     fn private_stdout_fixture_child() {
         if std::env::args().any(|argument| argument == "--exact") {
-            let mut descendant =
-                std::process::Command::new(std::env::current_exe().expect("fixture executable"))
-                    .args([
-                        "--exact",
-                        "contained_launch_tests::private_output_descendant",
-                    ])
-                    .spawn()
-                    .expect("spawn stdout descendant");
             let mut stdout = std::io::stdout().lock();
             use std::io::Write;
             let _ = stdout.write_all(&vec![b'x'; 4096]);
             let _ = stdout.flush();
             std::thread::sleep(Duration::from_secs(30));
-            let _ = descendant.wait();
         }
     }
 
     #[test]
     fn private_stderr_fixture_child() {
         if std::env::args().any(|argument| argument == "--exact") {
-            let mut descendant =
-                std::process::Command::new(std::env::current_exe().expect("fixture executable"))
-                    .args([
-                        "--exact",
-                        "contained_launch_tests::private_output_descendant",
-                    ])
-                    .spawn()
-                    .expect("spawn stderr descendant");
             let mut stderr = std::io::stderr().lock();
             use std::io::Write;
             let _ = stderr.write_all(&vec![b'x'; 4096]);
             let _ = stderr.flush();
             std::thread::sleep(Duration::from_secs(30));
-            let _ = descendant.wait();
         }
     }
 
