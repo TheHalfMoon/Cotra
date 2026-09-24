@@ -6,10 +6,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: review-gates-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   ocr-delegation:
     name: Alibaba OCR Delegation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,11 +81,11 @@ jobs:
   jev-review:
     name: Jev Semantic Review
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       JEV_REVIEW_SHA: 31f89602797fb7bea007f8a480bf368bf564954e
-      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,6 +95,8 @@ jobs:
         with:
           node-version: "24"
       - name: Require TypeSafe credential
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -108,6 +115,8 @@ jobs:
           git diff --check
           git status --short
       - name: Install pinned Jev Review
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -120,6 +129,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          trap 'rm -f .review-tools/jev-review/.env' EXIT
           npm --prefix .review-tools/jev-review run review:changes -- "$GITHUB_WORKSPACE" > jev-review.json
           cat jev-review.json
       - uses: actions/upload-artifact@v4
