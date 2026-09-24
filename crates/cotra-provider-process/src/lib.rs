@@ -156,6 +156,7 @@ fn allowed_execution_env(name: &str) -> bool {
         "PATH"
             | "Path"
             | "PATHEXT"
+            | "ComSpec"
             | "SystemRoot"
             | "WINDIR"
             | "TEMP"
@@ -1272,9 +1273,39 @@ mod windows_contained_launch {
     }
 
     fn minimal_environment_block(system_root: &OsStr) -> Vec<u16> {
+        const ESSENTIAL_KEYS: &[&str] = &[
+            "ComSpec",
+            "PATH",
+            "PATHEXT",
+            "SystemRoot",
+            "TEMP",
+            "TMP",
+            "WINDIR",
+        ];
+
+        let mut entries = Vec::<(String, std::ffi::OsString)>::new();
+        for key in ESSENTIAL_KEYS {
+            let value = if key.eq_ignore_ascii_case("SystemRoot")
+                || key.eq_ignore_ascii_case("WINDIR")
+            {
+                Some(system_root.to_os_string())
+            } else {
+                std::env::var_os(key)
+            };
+            if let Some(value) = value {
+                entries.push(((*key).to_owned(), value));
+            }
+        }
+        entries.sort_by(|left, right| {
+            left.0
+                .to_ascii_lowercase()
+                .cmp(&right.0.to_ascii_lowercase())
+        });
+
         let mut environment = Vec::new();
-        push_environment_entry(&mut environment, "SystemRoot", system_root);
-        push_environment_entry(&mut environment, "WINDIR", system_root);
+        for (key, value) in entries {
+            push_environment_entry(&mut environment, &key, &value);
+        }
         environment.push(0);
         environment
     }
