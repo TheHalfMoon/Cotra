@@ -46,19 +46,44 @@ ABI provenance:
 
 ## Environment repair note
 
-The first native Windows runs reached CreateProcessW but failed with Win32 error 203 while Cotra supplied a hand-built custom environment block.
+The first native Windows runs reached CreateProcessW but failed with Win32 error 203.
 
-Cotra does not fall back to inheriting the calling process environment. The probe now obtains a fresh system-only Unicode environment with CreateEnvironmentBlock(NULL, FALSE), passes it with CREATE_UNICODE_ENVIRONMENT, and destroys the returned block after CreateProcessW.
+Microsoft's AppContainer documentation identifies LOCALAPPDATA as the profile root exposed to the AppContainer and states that LOCALAPPDATA, TEMP, and TMP are rerouted into AppContainer-accessible profile directories. A system-only environment omits user variables such as LOCALAPPDATA, so it is not sufficient for this launch path.
 
-Microsoft documents that CreateEnvironmentBlock with a NULL token and bInherit=FALSE returns system variables only. This avoids copying the current user's/process's environment into the child while following the Windows-supported environment-block construction path.
+Cotra now constructs a sorted Unicode environment from a fixed safe-name allowlist. It includes Windows/system paths plus the user-directory variables required for AppContainer profile redirection. Arbitrary parent variables are not copied.
 
-The probe also passes no explicit current directory, matching Microsoft's documented AppContainer launch example and avoiding a dependency on an inaccessible runner workspace cwd.
+Required before launch:
+- LOCALAPPDATA
+- SystemRoot
+- TEMP
+- TMP
+
+Allowed safe names:
+- APPDATA
+- ComSpec
+- HOMEDRIVE
+- HOMEPATH
+- LOCALAPPDATA
+- NUMBER_OF_PROCESSORS
+- OS
+- PATH
+- PATHEXT
+- PROCESSOR_ARCHITECTURE
+- SystemDrive
+- SystemRoot
+- TEMP
+- TMP
+- USERPROFILE
+- WINDIR
+
+The environment block is case-insensitively sorted and double-NUL terminated. No API keys, tunnel credentials, or arbitrary caller variables are inherited.
+
+Official references:
+- https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer
+- https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw
 
 Concept provenance:
 - cpjet64/rappct @ c02f9dd960645522009da3827a79bdc99f50c9c1
 - MIT license
 - concept-only research on AppContainer CreateProcessW error 203 diagnostics.
 - no rappct implementation source is copied.
-
-Official additional reference:
-- https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createenvironmentblock
