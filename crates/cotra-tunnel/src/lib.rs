@@ -183,7 +183,7 @@ fn quote_stdio_command_path(path: &Path) -> Result<String, String> {
     if raw.contains(',') {
         return Err("Cotra MCP command path must not contain a comma".into());
     }
-    let escaped = raw.replace('\\', "\\\\").replace('"', "\\"");
+    let escaped = raw.replace('\\', "\\\\").replace('"', "\\\"");
     Ok(format!("\"{escaped}\""))
 }
 
