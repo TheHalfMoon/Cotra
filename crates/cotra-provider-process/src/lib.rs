@@ -176,7 +176,9 @@ fn canonical_dir(path: &Path, label: &str) -> Result<PathBuf, ExecutionPlanError
     let resolved = fs::canonicalize(path)
         .map_err(|error| ExecutionPlanError::new(format!("resolve {label}: {error}")))?;
     if !resolved.is_dir() {
-        return Err(ExecutionPlanError::new(format!("{label} is not a directory")));
+        return Err(ExecutionPlanError::new(format!(
+            "{label} is not a directory"
+        )));
     }
     Ok(resolved)
 }
