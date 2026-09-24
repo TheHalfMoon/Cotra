@@ -39,7 +39,13 @@ jobs:
           with open("ocr-preview.json", encoding="utf-8") as handle:
               preview = json.load(handle)
 
-          files = preview.get("reviewable_files", [])
+          raw_files = preview.get("reviewable_files", [])
+          files = []
+          for entry in raw_files:
+              path = entry.get("path") if isinstance(entry, dict) else entry
+              if isinstance(path, str) and path:
+                  files.append(path)
+
           print(f"OCR reviewable files: {len(files)}")
           for path in files:
               print(f" - {path}")
