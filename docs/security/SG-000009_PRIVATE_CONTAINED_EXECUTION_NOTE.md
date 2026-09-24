@@ -7,7 +7,7 @@ SG-000009 qualifies a provider-internal Windows executor. It does not register a
 The qualification fixture is deliberately fixed:
 
 - executable: the operating-system `whoami.exe` resolved relative to `GetSystemDirectoryW`;
-- argv: exactly `/all`;
+- argv: no arguments; `/all` is excluded because its claims query is unavailable in the zero-capability AppContainer and returns exit code 1;
 - cwd: an explicit temporary qualification root;
 - environment: the existing fixed-name, case-insensitive allowlist with Cotra/tunnel/secret values excluded;
 - stdin: `NUL` with no caller input;
@@ -21,6 +21,6 @@ The child receives only three explicitly listed inheritable handles through `PRO
 
 This grain does not claim arbitrary process execution, workspace authority, network access, PowerShell, browser control, UI input, approval, or elevation. The existing policy allowlist continues to deny `process.spawn`.
 
-The native Windows qualification test proves the fixed fixture, workspace-bound cwd binding, bounded output capture, AppContainer token, pre-resume Job membership, exit code, and Job quiescence. Timeout/output-overflow and descendant-tree fixtures remain successor work and are not claimed here.
+The native Windows qualification test proves the fixed no-argument fixture, workspace-bound cwd binding, bounded output capture, AppContainer token, pre-resume Job membership, exit code, and Job quiescence. A prior native diagnostic proved that `whoami.exe /all` reports `Unable to get user claims information.` and exits 1 in this zero-capability AppContainer; `/all` is therefore not the success fixture. Timeout/output-overflow and descendant-tree fixtures remain successor work and are not claimed here.
 
 No donor implementation source was copied. The design uses Microsoft AppContainer, Job Object, pipe, and process APIs documented by Win32.

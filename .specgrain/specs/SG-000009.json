@@ -12,7 +12,7 @@
     "SG-000007",
     "SG-000008"
   ],
-  "objective": "Qualify a provider-internal Windows executor for one deterministic fixed argv child with AppContainer identity, kill-on-close Job lifecycle, scrubbed environment, an explicit three-handle inheritance allowlist, workspace-bound cwd, bounded stdout/stderr capture, and verified process-tree quiescence, without exposing process.spawn through policy, cotrad, or MCP.",
+  "objective": "Qualify a provider-internal Windows executor for one deterministic fixed inbox child with no arguments with AppContainer identity, kill-on-close Job lifecycle, scrubbed environment, an explicit three-handle inheritance allowlist, workspace-bound cwd, bounded stdout/stderr capture, and verified process-tree quiescence, without exposing process.spawn through policy, cotrad, or MCP.",
   "scope": {
     "include": [
       "explicit absolute executable and fixed argv validation",
@@ -62,7 +62,7 @@
   "acceptance": [
     {
       "id": "A1",
-      "claim": "Native Windows tests launch exactly whoami.exe /all without shell interpolation and return bounded stdout/stderr plus exit code."
+      "claim": "Native Windows tests launch exactly whoami.exe with no arguments without shell interpolation and return bounded stdout/stderr plus exit code."
     },
     {
       "id": "A2",

@@ -1738,10 +1738,9 @@ mod windows_contained_launch {
             })?;
         let expected_executable = std::fs::canonicalize(expected_executable)
             .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.to_string()))?;
-        if expected_executable != plan.executable || plan.argv.len() != 1 || plan.argv[0] != "/all"
-        {
+        if expected_executable != plan.executable || !plan.argv.is_empty() {
             return Err(PrivateExecutionFailure::InvalidPlan(
-                "qualification executor accepts only whoami.exe /all".into(),
+                "qualification executor accepts only whoami.exe with no arguments".into(),
             ));
         }
         let mut profile = AppContainerProfile::create(profile_name)
@@ -2074,7 +2073,7 @@ mod contained_launch_tests {
     }
 
     #[test]
-    fn windows_private_qualification_executes_bounded_argv_with_quiescent_job() {
+    fn windows_private_qualification_executes_bounded_fixed_child_with_quiescent_job() {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
@@ -2101,7 +2100,7 @@ mod contained_launch_tests {
         let plan = build_execution_plan(
             &workspace,
             &executable,
-            &["/all".to_owned()],
+            &[],
             ".",
             &env,
             ExecutionLimits::default(),

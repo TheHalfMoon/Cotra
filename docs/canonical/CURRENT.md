@@ -34,7 +34,7 @@ Branch:
 feat/sg-000009-private-contained-argv
 
 SG-000009 must prove:
-- fixed private `whoami.exe /all` execution without shell interpolation
+- fixed private `whoami.exe` execution without arguments without shell interpolation
 - explicit absolute executable plus validated workspace-bound cwd applied to CreateProcessW
 - scrubbed environment and an explicit three-handle allowlist: NUL stdin, stdout, stderr
 - AppContainer token and Job membership verification before resume
