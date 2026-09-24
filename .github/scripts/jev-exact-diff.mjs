@@ -4,11 +4,26 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const [baseArg, headArg, repository, jevDirectory] = process.argv.slice(2);
+const report = {
+  schema_version: "1",
+  reviewer: "TypeSafe Jev via pinned devagrawal09/jev-review checkout",
+  jev_pin: "31f89602797fb7bea007f8a480bf368bf564954e",
+  base_sha: baseArg ?? null,
+  head_sha: headArg ?? null,
+  diff: baseArg && headArg ? `${baseArg}..${headArg}` : null,
+  changed_files: [],
+  hunk_judgments: [],
+  findings: [],
+  blocking_findings: [],
+  coverage: { expected_hunks: 0, reviewed_hunks: 0, complete: false },
+  status: "FAILED",
+};
 if (!/^[0-9a-f]{40}$/.test(baseArg ?? "") || !/^[0-9a-f]{40}$/.test(headArg ?? "")) throw new Error("full lowercase SHAs required");
 if (!repository || !jevDirectory) throw new Error("repository and JEV_DIR are required");
 const sdkPath = join(jevDirectory, "node_modules", "@typesafe-ai", "sdk", "dist", "index.mjs");
 const { TypeSafeClient, choice, noul, score, VERSION: sdkVersion } = await import(pathToFileURL(sdkPath).href);
 const client = new TypeSafeClient();
+report.typesafe_sdk_version = sdkVersion;
 const dimensions = {
   correctness: "incorrect runtime behavior",
   security: "a weakened security boundary, secret exposure, injection, or unsafe default",
@@ -24,27 +39,13 @@ const mechanisms = {
   testGap: ["branch", "failure", "boundary", "integration", "other", "noIssue"],
 };
 const severityRubric = ["No meaningful impact or no supported issue", "Minor or narrowly limited impact", "Significant correctness, reliability, compatibility, or security impact", "Critical security, data-loss, or widespread outage impact"];
-const report = {
-  schema_version: "1",
-  reviewer: "TypeSafe Jev via pinned devagrawal09/jev-review checkout",
-  jev_pin: "31f89602797fb7bea007f8a480bf368bf564954e",
-  typesafe_sdk_version: sdkVersion,
-  base_sha: baseArg,
-  head_sha: headArg,
-  diff: `${baseArg}..${headArg}`,
-  changed_files: [],
-  hunk_judgments: [],
-  findings: [],
-  blocking_findings: [],
-  coverage: { expected_hunks: 0, reviewed_hunks: 0, complete: false },
-  status: "FAILED",
-};
+
 
 function git(args) {
-  return execFileSync("git", ["-C", repository, ...args], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  return execFileSync("git", ["--literal-pathspecs", "-C", repository, ...args], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
 }
 
-function splitHunks(patch, maxLines = 180) {
+function splitHunks(patch) {
   const lines = patch.split("\n");
   const firstHunk = lines.findIndex((line) => line.startsWith("@@ "));
   if (firstHunk < 0) throw new Error("changed file has no unified-diff hunk");
@@ -58,24 +59,24 @@ function splitHunks(patch, maxLines = 180) {
     } else if (current) current.push(line);
   }
   if (current) hunks.push(current);
-  return hunks.flatMap((hunk) => {
-    const body = hunk.slice(1);
-    if (body.length <= maxLines) return [hunk.join("\n")];
-    const chunks = [];
-    for (let index = 0; index < body.length; index += maxLines) chunks.push([hunk[0], ...body.slice(index, index + maxLines)].join("\n"));
-    return chunks;
-  }).map((hunk) => ({ patch: `${header}\n${hunk}`, startLine: Number(hunk.match(/@@ .*\+(\d+)/)?.[1] ?? 1) }));
+  return hunks.map((hunk) => ({
+    patch: `${header}\n${hunk.join("\n")}`,
+    startLine: Number(hunk[0].match(/@@ .*\+(\d+)/)?.[1] ?? 1),
+  }));
 }
 
 try {
   git(["cat-file", "-e", `${baseArg}^{commit}`]);
   git(["cat-file", "-e", `${headArg}^{commit}`]);
-  const names = git(["diff", "--name-only", "-z", "--diff-filter=ACMRTUXB", baseArg, headArg]).split("\0").filter(Boolean);
+  const names = git(["diff", "--name-only", "-z", baseArg, headArg]).split("\0").filter(Boolean);
   if (names.length === 0) throw new Error("the exact PR diff contains no files");
   for (const path of names) {
+    const selectedNames = git(["diff", "--name-only", "-z", baseArg, headArg, "--", path]).split("\0").filter(Boolean);
+    if (selectedNames.length !== 1 || selectedNames[0] !== path) throw new Error(`literal path selection mismatch: ${path}`);
     const numstat = git(["diff", "--numstat", baseArg, headArg, "--", path]).trim();
     if (numstat.startsWith("-\t-\t")) throw new Error(`binary file cannot be reviewed: ${path}`);
-    const hunks = splitHunks(git(["diff", "--no-ext-diff", "--no-color", "--unified=3", baseArg, headArg, "--", path]));
+    const patch = git(["diff", "--no-ext-diff", "--no-color", "--unified=3", baseArg, headArg, "--", path]);
+    const hunks = splitHunks(patch);
     const fileResult = { path, hunks: hunks.length, reviewed_hunks: 0 };
     report.changed_files.push(fileResult);
     report.coverage.expected_hunks += hunks.length;

@@ -240,8 +240,6 @@ Role:
 - optional future remote/sandbox provider;
 - not required for local Windows MVP.
 
-
-
 ### cpjet64/rappct
 
 Pin:
@@ -263,8 +261,6 @@ CONCEPT ONLY.
 
 Cotra independently implements its bounded qualification probe. No rappct implementation source is copied. The source was consulted after the first native Windows launch returned Win32 error 203; its diagnostics informed the investigation. Cotra's repaired implementation is based on Microsoft AppContainer documentation requiring LOCALAPPDATA/TEMP/TMP profile redirection and uses an independently written fixed safe-name environment allowlist.
 
-
-
 ### alibaba/open-code-review
 
 Pin:
@@ -278,21 +274,17 @@ Apache-2.0
 
 Role:
 - deterministic review file selection and rule resolution;
-- Delegation Mode qualification without an OCR-managed LLM credential;
-- review evidence generation for Cotra implementation PRs.
+- Delegation Mode qualification without an OCR-managed LLM credential.
 
 Integration:
 EXTERNAL REVIEW TOOL. NO SOURCE COPIED.
 
-Cotra runs `ocr delegate preview --format json` and `ocr delegate rule --format json` against the exact PR base/head range. OCR Delegation Mode does not itself constitute the semantic judgment; the host reviewer must review every OCR-selected file under the resolved rules.
+Cotra downloads the official Alibaba OpenCodeReview v1.12.9 Linux release binary, verifies its pinned SHA-256 before use, and runs `ocr delegate preview` and `ocr delegate rule` against the exact PR base/head range. OCR Delegation Mode does not itself constitute semantic judgment; the host reviewer must review every OCR-selected file and manually review excluded files. The candidate checkout is treated only as data and its package scripts are never executed.
 
 ### devagrawal09/jev-review
 
 Pin:
 31f89602797fb7bea007f8a480bf368bf564954e
-
-Default branch:
-main
 
 Upstream license:
 MIT
@@ -304,7 +296,7 @@ Role:
 Integration:
 EXTERNAL REVIEW TOOL. NO SOURCE COPIED.
 
-Cotra checks out the PR base, verifies and materializes the exact `base..head` diff, and runs a Cotra-owned exact-diff adapter against the `@typesafe-ai/sdk` installed by that pinned Jev checkout. The adapter sends every changed-file hunk to genuine TypeSafe Jev structured judgments, records per-hunk coverage and severity-rated findings, and fails closed on incomplete coverage or a blocking finding. The Jev checkout and SDK remain under `RUNNER_TEMP`, outside the Cotra repository working tree. A TypeSafe API key is required. Missing credentials fail the Jev gate explicitly rather than being treated as a pass.
+Cotra uses a base-controlled `pull_request_target` workflow, checks out the exact base SHA, fetches the PR head only as Git data, and runs the base SHA's exact-diff adapter against `base..head`. The adapter sends every changed-file hunk, including deletions, to genuine TypeSafe Jev structured judgments, records per-hunk coverage and severity-rated findings, and fails closed on incomplete coverage or a blocking finding. PR-controlled code is never executed in the secret-bearing job. The Jev checkout and SDK remain under `RUNNER_TEMP`, outside the Cotra repository working tree. A TypeSafe API key is required. Missing credentials fail the Jev gate explicitly rather than being treated as a pass.
 
 ## Source-use decision matrix
 

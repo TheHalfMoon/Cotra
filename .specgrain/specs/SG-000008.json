@@ -5,7 +5,7 @@
   "state": "GRAIN",
   "risk": "high",
   "created": "2026-09-24",
-  "base": "ed5cd2be9acd7aac93754965d055c82f77a01884",
+  "base": "321e261afde623953c4c407125857c91b7631911",
   "dependencies": [
     "SG-000005",
     "SG-000006",
