@@ -1285,13 +1285,12 @@ mod windows_contained_launch {
 
         let mut entries = Vec::<(String, std::ffi::OsString)>::new();
         for key in ESSENTIAL_KEYS {
-            let value = if key.eq_ignore_ascii_case("SystemRoot")
-                || key.eq_ignore_ascii_case("WINDIR")
-            {
-                Some(system_root.to_os_string())
-            } else {
-                std::env::var_os(key)
-            };
+            let value =
+                if key.eq_ignore_ascii_case("SystemRoot") || key.eq_ignore_ascii_case("WINDIR") {
+                    Some(system_root.to_os_string())
+                } else {
+                    std::env::var_os(key)
+                };
             if let Some(value) = value {
                 entries.push(((*key).to_owned(), value));
             }
