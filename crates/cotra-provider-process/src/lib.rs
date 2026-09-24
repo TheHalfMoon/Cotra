@@ -481,3 +481,140 @@ mod windows_appcontainer {
         ))
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobObjectProbe {
+    pub job_created: bool,
+    pub kill_on_close_set: bool,
+    pub handle_closed: bool,
+}
+
+#[cfg(windows)]
+pub fn probe_job_object_kill_on_close() -> Result<JobObjectProbe, ExecutionPlanError> {
+    windows_job_object::probe()
+}
+
+#[cfg(not(windows))]
+pub fn probe_job_object_kill_on_close() -> Result<JobObjectProbe, ExecutionPlanError> {
+    Err(ExecutionPlanError::new(
+        "Job Object probing is available only on Windows",
+    ))
+}
+
+#[cfg(windows)]
+mod windows_job_object {
+    use super::{ExecutionPlanError, JobObjectProbe};
+    use core::ffi::c_void;
+    use std::mem;
+    use std::ptr;
+
+    type Handle = *mut c_void;
+
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS: i32 = 9;
+
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy, Default)]
+    struct JobObjectBasicLimitInformation {
+        per_process_user_time_limit: i64,
+        per_job_user_time_limit: i64,
+        limit_flags: u32,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy, Default)]
+    struct IoCounters {
+        read_operation_count: u64,
+        write_operation_count: u64,
+        other_operation_count: u64,
+        read_transfer_count: u64,
+        write_transfer_count: u64,
+        other_transfer_count: u64,
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy, Default)]
+    struct JobObjectExtendedLimitInformation {
+        basic_limit_information: JobObjectBasicLimitInformation,
+        io_info: IoCounters,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn CreateJobObjectW(job_attributes: *const c_void, name: *const u16) -> Handle;
+        fn SetInformationJobObject(
+            job: Handle,
+            information_class: i32,
+            information: *const c_void,
+            information_length: u32,
+        ) -> i32;
+        fn CloseHandle(object: Handle) -> i32;
+        fn GetLastError() -> u32;
+    }
+
+    pub(super) fn probe() -> Result<JobObjectProbe, ExecutionPlanError> {
+        let job = unsafe { CreateJobObjectW(ptr::null(), ptr::null()) };
+        if job.is_null() {
+            return Err(last_error("CreateJobObjectW"));
+        }
+
+        let mut information = JobObjectExtendedLimitInformation::default();
+        information.basic_limit_information.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+        let configured = unsafe {
+            SetInformationJobObject(
+                job,
+                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS,
+                (&information as *const JobObjectExtendedLimitInformation).cast(),
+                mem::size_of::<JobObjectExtendedLimitInformation>() as u32,
+            )
+        };
+
+        if configured == 0 {
+            let error = last_error("SetInformationJobObject");
+            unsafe {
+                CloseHandle(job);
+            }
+            return Err(error);
+        }
+
+        let closed = unsafe { CloseHandle(job) };
+        if closed == 0 {
+            return Err(last_error("CloseHandle"));
+        }
+
+        Ok(JobObjectProbe {
+            job_created: true,
+            kill_on_close_set: true,
+            handle_closed: true,
+        })
+    }
+
+    fn last_error(operation: &str) -> ExecutionPlanError {
+        let code = unsafe { GetLastError() };
+        ExecutionPlanError::new(format!("{operation} failed with Win32 error {code}"))
+    }
+}
+
+#[cfg(all(test, windows))]
+mod job_object_tests {
+    use super::*;
+
+    #[test]
+    fn windows_job_object_kill_on_close_is_available() {
+        let result = probe_job_object_kill_on_close().expect("Job Object lifecycle");
+        assert!(result.job_created);
+        assert!(result.kill_on_close_set);
+        assert!(result.handle_closed);
+    }
+}
