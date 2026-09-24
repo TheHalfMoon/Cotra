@@ -46,21 +46,19 @@ ABI provenance:
 
 ## Environment repair note
 
-The first native Windows run reached CreateProcessW but failed with Win32 error 203 after Cotra supplied an environment containing only SystemRoot and WINDIR.
+The first native Windows runs reached CreateProcessW but failed with Win32 error 203 while Cotra supplied a hand-built custom environment block.
 
-Cotra keeps the secret-isolation invariant and does not fall back to full parent-environment inheritance. The probe now supplies a case-insensitively sorted allowlist of Windows launch essentials only:
-- ComSpec
-- PATH
-- PATHEXT
-- SystemRoot
-- TEMP
-- TMP
-- WINDIR
+Cotra does not fall back to inheriting the calling process environment. The probe now obtains a fresh system-only Unicode environment with CreateEnvironmentBlock(NULL, FALSE), passes it with CREATE_UNICODE_ENVIRONMENT, and destroys the returned block after CreateProcessW.
 
-Microsoft documents that a caller-provided environment block replaces the parent environment and must be a sorted, double-NUL-terminated Unicode block when CREATE_UNICODE_ENVIRONMENT is used.
+Microsoft documents that CreateEnvironmentBlock with a NULL token and bInherit=FALSE returns system variables only. This avoids copying the current user's/process's environment into the child while following the Windows-supported environment-block construction path.
+
+The probe also passes no explicit current directory, matching Microsoft's documented AppContainer launch example and avoiding a dependency on an inaccessible runner workspace cwd.
 
 Concept provenance:
 - cpjet64/rappct @ c02f9dd960645522009da3827a79bdc99f50c9c1
 - MIT license
-- concept-only reuse: its launch documentation/code identifies essential Windows variables needed when using a custom CreateProcessW environment and specifically calls out error 203.
+- concept-only research on AppContainer CreateProcessW error 203 diagnostics.
 - no rappct implementation source is copied.
+
+Official additional reference:
+- https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createenvironmentblock
