@@ -2,16 +2,18 @@
 
 Status: IMPLEMENTATION
 Date: 2026-09-24
-Canonical main: ba6aa919d35432db0c049ca970be29f95767041f
+Canonical main: 617b06ca234298f5cca184d66c04df5ce1b1b4cc
 
 SG-000001 through SG-000009 are COMPLETE_CANONICAL.
 
 SG-000009:
 - qualified head ca17e5b5f8145dfb01ad0ad6102587ef7f80ed76
-- merge ba6aa919d35432db0c049ca970be29f95767041f
+- implementation merge ba6aa919d35432db0c049ca970be29f95767041f
+- closeout merge 617b06ca234298f5cca184d66c04df5ce1b1b4cc
 - pre-merge CI 36027271683 - SUCCESS
 - Review Gates 36027269455 - SUCCESS; Jev 20/20 hunks, zero findings; OCR exact range PASSED
 - post-merge CI 36029004410 - SUCCESS
+- SG-000009 closeout post-merge CI 36029741014 - SUCCESS
 - native Windows fixed no-argument whoami.exe AppContainer qualification proven
 
 Canonical capabilities:
@@ -29,18 +31,18 @@ Canonical capabilities:
 Live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
 
 Active grain:
-Next P05 successor - destructive timeout/output-limit descendant-tree runtime qualification
+SG-000009A - Destructive timeout and output-limit termination qualification
 
 Branch:
-to be created from canonical main after SG-000009 closeout
+feat/sg-000009a-destructive-termination
 
-Next P05 successor must prove:
-- destructive timeout termination with verified Job/process-tree quiescence
-- output-limit termination with verified Job/process-tree quiescence
-- cancellation distinguished from unverified termination
+SG-000009A must prove:
+- fixed provider-private timeout and output-limit child modes
+- Job termination with verified zero active processes
+- typed ProcessTimeout, OutputLimit, and TerminationUnverified evidence
 - no expansion of process.spawn, PowerShell, arbitrary executable, network, ACL, browser/UI, elevation, or approval authority
 
-SG-000009 remains canonical for the fixed private no-argument child success path. Destructive timeout/output-limit descendant-tree runtime qualification remains deferred and is the next lawful unit.
+SG-000009 remains canonical for the fixed private no-argument child success path. Destructive timeout/output-limit descendant-tree runtime qualification is the next lawful P05 unit.
 
 Still denied / absent:
 - process.spawn MCP authority
