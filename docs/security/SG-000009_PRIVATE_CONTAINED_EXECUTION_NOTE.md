@@ -17,10 +17,10 @@ The qualification fixture is deliberately fixed:
 - completion: finite wait and exit-code evidence;
 - failure: Job termination followed by active-process quiescence verification.
 
-The child receives only three explicitly listed inheritable handles through `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`. Other process handles are not inherited. Parent pipe writers are closed immediately after process creation. Output-limit and timeout paths terminate the Job and return typed `OutputLimit` or `ProcessTimeout` only after the Job reports zero active processes; otherwise they return `TerminationUnverified`.
+The child receives only three explicitly listed inheritable handles through `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`: NUL stdin, the stdout pipe writer, and the stderr pipe writer. Other process handles are not authorized for inheritance. Parent pipe writers are closed immediately after process creation. The implementation contains typed output-limit and timeout termination branches, but SG-000009 does not claim runtime qualification of those destructive paths. Their descendant-tree fixtures and runtime evidence are successor work.
 
 This grain does not claim arbitrary process execution, workspace authority, network access, PowerShell, browser control, UI input, approval, or elevation. The existing policy allowlist continues to deny `process.spawn`.
 
-The native Windows qualification test proves the fixed fixture, bounded output, AppContainer token, pre-resume Job membership, exit code, and Job quiescence. Timeout/output-overflow descendant fixtures remain successor work and are not claimed here.
+The native Windows qualification test proves the fixed fixture, workspace-bound cwd binding, bounded output capture, AppContainer token, pre-resume Job membership, exit code, and Job quiescence. Timeout/output-overflow and descendant-tree fixtures remain successor work and are not claimed here.
 
 No donor implementation source was copied. The design uses Microsoft AppContainer, Job Object, pipe, and process APIs documented by Win32.

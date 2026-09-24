@@ -978,7 +978,7 @@ mod windows_contained_launch {
         fn CreateFileW(
             file_name: *const u16,
             desired_access: u32,
-            share_mode: *const u32,
+            share_mode: u32,
             security_attributes: *const c_void,
             creation_disposition: u32,
             flags_and_attributes: u32,
@@ -1018,7 +1018,7 @@ mod windows_contained_launch {
 
     impl OwnedHandle {
         fn new(handle: Handle, operation: &str) -> Result<Self, ExecutionPlanError> {
-            if handle.is_null() {
+            if handle.is_null() || handle as isize == -1 {
                 Err(last_error(operation))
             } else {
                 Ok(Self(handle))
@@ -1383,6 +1383,8 @@ mod windows_contained_launch {
             let application = wide(process_executable.as_os_str());
             let mut command_line = command_line_for_paths(&process_executable, &plan.argv);
             let mut environment = environment_from_plan(plan)?;
+            let process_cwd = path_for_process_api(&plan.cwd);
+            let current_directory = wide(process_cwd.as_os_str());
             let mut information: ProcessInformation = unsafe { mem::zeroed() };
             let created = unsafe {
                 CreateProcessW(
@@ -1396,7 +1398,7 @@ mod windows_contained_launch {
                         | EXTENDED_STARTUPINFO_PRESENT
                         | CREATE_NO_WINDOW,
                     environment.as_mut_ptr().cast(),
-                    ptr::null(),
+                    current_directory.as_ptr(),
                     (&startup as *const StartupInfoExW).cast(),
                     &mut information,
                 )
@@ -1563,7 +1565,7 @@ mod windows_contained_launch {
 
     fn null_input() -> Result<OwnedHandle, ExecutionPlanError> {
         let name = wide(OsStr::new("NUL"));
-        let share = [FILE_SHARE_READ | FILE_SHARE_WRITE];
+        let share = FILE_SHARE_READ | FILE_SHARE_WRITE;
         let attributes = SecurityAttributes {
             length: mem::size_of::<SecurityAttributes>() as u32,
             security_descriptor: ptr::null_mut(),
@@ -1574,7 +1576,7 @@ mod windows_contained_launch {
                 CreateFileW(
                     name.as_ptr(),
                     GENERIC_READ,
-                    share.as_ptr(),
+                    share,
                     (&attributes as *const SecurityAttributes).cast(),
                     OPEN_EXISTING,
                     FILE_ATTRIBUTE_NORMAL,

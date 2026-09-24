@@ -34,13 +34,17 @@ Branch:
 feat/sg-000009-private-contained-argv
 
 SG-000009 must prove:
-- private deterministic argv execution without shell interpolation
-- explicit absolute executable and workspace-bound cwd
-- scrubbed environment and no inherited handles
-- AppContainer and Job verification before resume
-- bounded stdout/stderr
-- timeout cancellation and verified process-tree quiescence
-- typed failure evidence
+- fixed private `whoami.exe /all` execution without shell interpolation
+- explicit absolute executable plus validated workspace-bound cwd applied to CreateProcessW
+- scrubbed environment and an explicit three-handle allowlist: NUL stdin, stdout, stderr
+- AppContainer token and Job membership verification before resume
+- bounded stdout/stderr capture, exit code, and bounded completion
+- zero active Job processes before success
+
+Deferred to successor work:
+- destructive timeout/output-limit runtime qualification
+- descendant-tree termination fixtures
+- any caller-selected process authority or configured workspace grant
 
 Still denied / absent:
 - process.spawn MCP authority
