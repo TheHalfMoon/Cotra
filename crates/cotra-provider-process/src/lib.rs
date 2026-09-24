@@ -318,6 +318,55 @@ mod tests {
     }
 
     #[test]
+    fn private_qualification_plan_rejects_non_allowlisted_environment() {
+        let workspace = root("private-env");
+        let exe = executable(&workspace);
+        let mut source = BTreeMap::new();
+        source.insert("PATH".to_owned(), "safe".to_owned());
+        source.insert("COTRA_TUNNEL_KEY_FILE".to_owned(), "secret".to_owned());
+        source.insert("API_KEY".to_owned(), "secret".to_owned());
+        let plan = build_execution_plan(
+            &workspace,
+            &exe,
+            &[],
+            ".",
+            &source,
+            ExecutionLimits::default(),
+        )
+        .expect("plan");
+        assert!(!plan
+            .env
+            .keys()
+            .any(|key| key.contains("COTRA") || key.contains("API")));
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn private_qualification_plan_rejects_nul_and_parent_cwd() {
+        let workspace = root("private-invalid");
+        let exe = executable(&workspace);
+        assert!(build_execution_plan(
+            &workspace,
+            &exe,
+            &["bad\0arg".into()],
+            ".",
+            &BTreeMap::new(),
+            ExecutionLimits::default(),
+        )
+        .is_err());
+        assert!(build_execution_plan(
+            &workspace,
+            &exe,
+            &[],
+            "..",
+            &BTreeMap::new(),
+            ExecutionLimits::default(),
+        )
+        .is_err());
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
     fn rejects_unbounded_limits() {
         let workspace = root("limits");
         let exe = executable(&workspace);
@@ -648,6 +697,43 @@ pub fn probe_contained_appcontainer_job_launch(
     ))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivateExecutionResult {
+    pub exit_code: u32,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    pub appcontainer_verified: bool,
+    pub assigned_to_job_before_resume: bool,
+    pub job_quiescent: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrivateExecutionFailure {
+    InvalidPlan(String),
+    Provider(String),
+    ProcessTimeout,
+    OutputLimit,
+    TerminationUnverified,
+}
+
+#[cfg(windows)]
+pub fn qualify_private_execution(
+    plan: ExecutionPlan,
+    profile_name: &str,
+) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
+    windows_contained_launch::qualify_private_execution(plan, profile_name)
+}
+
+#[cfg(not(windows))]
+pub fn qualify_private_execution(
+    _plan: ExecutionPlan,
+    _profile_name: &str,
+) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
+    Err(PrivateExecutionFailure::Provider(
+        "private contained execution qualification is available only on Windows".into(),
+    ))
+}
+
 #[cfg(windows)]
 mod windows_contained_launch {
     // SAFETY MODEL:
@@ -661,7 +747,11 @@ mod windows_contained_launch {
     //   outlive CreateProcessW; no pointer is retained by Cotra after that call returns.
     // - Child and Job handles remain valid for every token/job/process operation that uses them.
     // Individual unsafe blocks below are kept narrow and rely on these invariants.
-    use super::{validate_appcontainer_name, ContainedLaunchProbe, ExecutionPlanError};
+    use super::{
+        allowed_execution_env, validate_appcontainer_name, ContainedLaunchProbe, ExecutionPlan,
+        ExecutionPlanError, PrivateExecutionFailure, PrivateExecutionResult, FORBIDDEN_COTRA_ENV,
+        SECRETISH,
+    };
     use core::ffi::c_void;
     use std::ffi::{OsStr, OsString};
     use std::mem;
@@ -678,6 +768,12 @@ mod windows_contained_launch {
     const EXTENDED_STARTUPINFO_PRESENT: u32 = 0x0008_0000;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     const PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES: usize = 131_081;
+    const PROC_THREAD_ATTRIBUTE_HANDLE_LIST: usize = 131_082;
+    const GENERIC_READ: u32 = 0x8000_0000;
+    const FILE_SHARE_READ: u32 = 1;
+    const FILE_SHARE_WRITE: u32 = 2;
+    const OPEN_EXISTING: u32 = 3;
+    const FILE_ATTRIBUTE_NORMAL: u32 = 0x80;
     const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
     const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS: i32 = 9;
     const TOKEN_QUERY: u32 = 0x0008;
@@ -687,6 +783,9 @@ mod windows_contained_launch {
     const WAIT_FAILED: u32 = u32::MAX;
     const RESUME_FAILED: u32 = u32::MAX;
     const PROBE_TIMEOUT_MS: u32 = 15_000;
+    const HANDLE_FLAG_INHERIT: u32 = 0x0000_0001;
+    const JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION_CLASS: i32 = 1;
+    const ERROR_BROKEN_PIPE: u32 = 109;
 
     #[repr(C)]
     struct SidAndAttributes {
@@ -736,6 +835,19 @@ mod windows_contained_launch {
         thread: Handle,
         process_id: u32,
         thread_id: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy, Default)]
+    struct JobObjectBasicAccountingInformation {
+        total_user_time: i64,
+        total_kernel_time: i64,
+        this_period_total_user_time: i64,
+        this_period_total_kernel_time: i64,
+        total_page_fault_count: u32,
+        total_processes: u32,
+        active_processes: u32,
+        total_terminated_processes: u32,
     }
 
     #[repr(C)]
@@ -850,6 +962,46 @@ mod windows_contained_launch {
         fn WaitForSingleObject(handle: Handle, milliseconds: u32) -> u32;
         fn GetExitCodeProcess(process: Handle, exit_code: *mut u32) -> i32;
         fn GetSystemDirectoryW(buffer: *mut u16, size: u32) -> u32;
+        fn CreatePipe(
+            read_pipe: *mut Handle,
+            write_pipe: *mut Handle,
+            attributes: *const c_void,
+            size: u32,
+        ) -> i32;
+        fn CreateFileW(
+            file_name: *const u16,
+            desired_access: u32,
+            share_mode: *const u32,
+            security_attributes: *const c_void,
+            creation_disposition: u32,
+            flags_and_attributes: u32,
+            template_file: Handle,
+        ) -> Handle;
+        fn SetHandleInformation(handle: Handle, mask: u32, flags: u32) -> i32;
+        fn PeekNamedPipe(
+            pipe: Handle,
+            buffer: *mut c_void,
+            size: u32,
+            read: *mut u32,
+            available: *mut u32,
+            left: *mut u32,
+        ) -> i32;
+        fn ReadFile(
+            pipe: Handle,
+            buffer: *mut c_void,
+            size: u32,
+            read: *mut u32,
+            overlapped: *mut c_void,
+        ) -> i32;
+        fn QueryInformationJobObject(
+            job: Handle,
+            information_class: i32,
+            information: *mut c_void,
+            length: u32,
+            return_length: *mut u32,
+        ) -> i32;
+        fn TerminateJobObject(job: Handle, exit_code: u32) -> i32;
+        fn Sleep(milliseconds: u32);
         fn TerminateProcess(process: Handle, exit_code: u32) -> i32;
         fn CloseHandle(object: Handle) -> i32;
         fn GetLastError() -> u32;
@@ -959,39 +1111,39 @@ mod windows_contained_launch {
     struct AttributeList {
         heap: Handle,
         list: *mut c_void,
+        _handle_list: Vec<Handle>,
     }
 
     impl AttributeList {
         fn with_security_capabilities(
             security: &mut SecurityCapabilities,
+            handles: &[Handle],
         ) -> Result<Self, ExecutionPlanError> {
             let heap = unsafe { GetProcessHeap() };
             if heap.is_null() {
                 return Err(last_error("GetProcessHeap"));
             }
-
+            let attribute_count = if handles.is_empty() { 1 } else { 2 };
             let mut bytes = 0usize;
             unsafe {
-                InitializeProcThreadAttributeList(ptr::null_mut(), 1, 0, &mut bytes);
+                InitializeProcThreadAttributeList(ptr::null_mut(), attribute_count, 0, &mut bytes);
             }
             if bytes == 0 {
                 return Err(last_error("InitializeProcThreadAttributeList(size)"));
             }
-
             let list = unsafe { HeapAlloc(heap, 0, bytes) };
             if list.is_null() {
                 return Err(last_error("HeapAlloc(attribute list)"));
             }
-
-            let initialized = unsafe { InitializeProcThreadAttributeList(list, 1, 0, &mut bytes) };
-            if initialized == 0 {
+            if unsafe { InitializeProcThreadAttributeList(list, attribute_count, 0, &mut bytes) }
+                == 0
+            {
                 let error = last_error("InitializeProcThreadAttributeList");
                 unsafe {
                     HeapFree(heap, 0, list);
                 }
                 return Err(error);
             }
-
             let updated = unsafe {
                 UpdateProcThreadAttribute(
                     list,
@@ -1011,8 +1163,33 @@ mod windows_contained_launch {
                 }
                 return Err(error);
             }
-
-            Ok(Self { heap, list })
+            let mut handle_list = handles.to_vec();
+            if !handle_list.is_empty() {
+                let listed = unsafe {
+                    UpdateProcThreadAttribute(
+                        list,
+                        0,
+                        PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                        handle_list.as_mut_ptr().cast(),
+                        mem::size_of::<Handle>() * handle_list.len(),
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                    )
+                };
+                if listed == 0 {
+                    let error = last_error("UpdateProcThreadAttribute(HANDLE_LIST)");
+                    unsafe {
+                        DeleteProcThreadAttributeList(list);
+                        HeapFree(heap, 0, list);
+                    }
+                    return Err(error);
+                }
+            }
+            Ok(Self {
+                heap,
+                list,
+                _handle_list: handle_list,
+            })
         }
 
         fn raw(&self) -> *mut c_void {
@@ -1059,6 +1236,30 @@ mod windows_contained_launch {
             Ok(Self { handle })
         }
 
+        fn terminate(&self) -> Result<(), ExecutionPlanError> {
+            if unsafe { TerminateJobObject(self.handle.raw(), 1) } == 0 {
+                return Err(last_error("TerminateJobObject"));
+            }
+            Ok(())
+        }
+
+        fn active_processes(&self) -> Result<u32, ExecutionPlanError> {
+            let mut information = JobObjectBasicAccountingInformation::default();
+            let queried = unsafe {
+                QueryInformationJobObject(
+                    self.handle.raw(),
+                    JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION_CLASS,
+                    (&mut information as *mut JobObjectBasicAccountingInformation).cast(),
+                    mem::size_of::<JobObjectBasicAccountingInformation>() as u32,
+                    ptr::null_mut(),
+                )
+            };
+            if queried == 0 {
+                return Err(last_error("QueryInformationJobObject"));
+            }
+            Ok(information.active_processes)
+        }
+
         fn assign_before_resume(&self, child: &ChildProcess) -> Result<(), ExecutionPlanError> {
             let assigned =
                 unsafe { AssignProcessToJobObject(self.handle.raw(), child.process.raw()) };
@@ -1097,7 +1298,7 @@ mod windows_contained_launch {
                 capability_count: 0,
                 reserved: 0,
             };
-            let attributes = AttributeList::with_security_capabilities(&mut security)?;
+            let attributes = AttributeList::with_security_capabilities(&mut security, &[])?;
 
             let mut startup: StartupInfoExW = unsafe { mem::zeroed() };
             startup.startup_info.cb = mem::size_of::<StartupInfoExW>() as u32;
@@ -1142,6 +1343,62 @@ mod windows_contained_launch {
                 }
             };
 
+            Ok(Self {
+                process,
+                thread,
+                completed: false,
+            })
+        }
+
+        fn create_suspended_with_pipes(
+            profile_sid: Psid,
+            plan: &ExecutionPlan,
+            stdout: &OwnedHandle,
+            stderr: &OwnedHandle,
+        ) -> Result<Self, ExecutionPlanError> {
+            let stdin = null_input()?;
+            let handles = [stdin.raw(), stdout.raw(), stderr.raw()];
+            let mut security = SecurityCapabilities {
+                app_container_sid: profile_sid,
+                capabilities: ptr::null_mut(),
+                capability_count: 0,
+                reserved: 0,
+            };
+            let attributes = AttributeList::with_security_capabilities(&mut security, &handles)?;
+            let mut startup: StartupInfoExW = unsafe { mem::zeroed() };
+            startup.startup_info.cb = mem::size_of::<StartupInfoExW>() as u32;
+            startup.startup_info.h_std_input = stdin.raw();
+            startup.startup_info.h_std_output = stdout.raw();
+            startup.startup_info.h_std_error = stderr.raw();
+            startup.startup_info.dw_flags = 0x0000_0100;
+            startup.attribute_list = attributes.raw();
+            let application = wide(plan.executable.as_os_str());
+            let mut command_line = command_line_for_plan(plan);
+            let mut environment = environment_from_plan(plan)?;
+            let current_directory = wide(plan.cwd.as_os_str());
+            let mut information: ProcessInformation = unsafe { mem::zeroed() };
+            let created = unsafe {
+                CreateProcessW(
+                    application.as_ptr(),
+                    command_line.as_mut_ptr(),
+                    ptr::null(),
+                    ptr::null(),
+                    1,
+                    CREATE_SUSPENDED
+                        | CREATE_UNICODE_ENVIRONMENT
+                        | EXTENDED_STARTUPINFO_PRESENT
+                        | CREATE_NO_WINDOW,
+                    environment.as_mut_ptr().cast(),
+                    current_directory.as_ptr(),
+                    (&startup as *const StartupInfoExW).cast(),
+                    &mut information,
+                )
+            };
+            if created == 0 {
+                return Err(last_error("CreateProcessW(private qualification)"));
+            }
+            let process = OwnedHandle::new(information.process, "CreateProcessW process")?;
+            let thread = OwnedHandle::new(information.thread, "CreateProcessW thread")?;
             Ok(Self {
                 process,
                 thread,
@@ -1261,6 +1518,315 @@ mod windows_contained_launch {
             child_completed: true,
             exit_code,
             profile_deleted: true,
+        })
+    }
+
+    struct PrivatePipe {
+        read: OwnedHandle,
+    }
+
+    impl PrivatePipe {
+        fn create() -> Result<(Self, OwnedHandle), ExecutionPlanError> {
+            let mut read = ptr::null_mut();
+            let mut write = ptr::null_mut();
+            if unsafe { CreatePipe(&mut read, &mut write, ptr::null(), 0) } == 0 {
+                return Err(last_error("CreatePipe"));
+            }
+            let read = OwnedHandle::new(read, "CreatePipe read")?;
+            let write = OwnedHandle::new(write, "CreatePipe write")?;
+            if unsafe { SetHandleInformation(read.raw(), HANDLE_FLAG_INHERIT, 0) } == 0 {
+                return Err(last_error("SetHandleInformation"));
+            }
+            Ok((Self { read }, write))
+        }
+    }
+
+    fn null_input() -> Result<OwnedHandle, ExecutionPlanError> {
+        let name = wide(OsStr::new("NUL"));
+        let share = [FILE_SHARE_READ | FILE_SHARE_WRITE];
+        OwnedHandle::new(
+            unsafe {
+                CreateFileW(
+                    name.as_ptr(),
+                    GENERIC_READ,
+                    share.as_ptr(),
+                    ptr::null(),
+                    OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL,
+                    ptr::null_mut(),
+                )
+            },
+            "CreateFileW(NUL)",
+        )
+    }
+
+    fn quote_arg(arg: &str) -> Vec<u16> {
+        let mut out = Vec::new();
+        out.push('"' as u16);
+        let mut backslashes = 0usize;
+        for ch in arg.encode_utf16() {
+            if ch == '\\' as u16 {
+                backslashes += 1;
+            } else if ch == '"' as u16 {
+                out.extend(std::iter::repeat_n('\\' as u16, backslashes * 2 + 1));
+                out.push(ch);
+                backslashes = 0;
+            } else {
+                out.extend(std::iter::repeat_n('\\' as u16, backslashes));
+                out.push(ch);
+                backslashes = 0;
+            }
+        }
+        out.extend(std::iter::repeat_n('\\' as u16, backslashes * 2));
+        out.push('"' as u16);
+        out
+    }
+
+    fn command_line_for_plan(plan: &ExecutionPlan) -> Vec<u16> {
+        let mut command = quote_arg(&plan.executable.to_string_lossy());
+        for arg in &plan.argv {
+            command.push(' ' as u16);
+            command.extend(quote_arg(arg));
+        }
+        command.push(0);
+        command
+    }
+
+    fn environment_from_plan(plan: &ExecutionPlan) -> Result<Vec<u16>, ExecutionPlanError> {
+        let mut entries = Vec::new();
+        for (key, value) in &plan.env {
+            if key.is_empty() || key.contains('\0') || value.contains('\0') || key.contains('=') {
+                return Err(ExecutionPlanError::new("invalid environment entry"));
+            }
+            let upper = key.to_ascii_uppercase();
+            if SECRETISH.iter().any(|needle| upper.contains(needle))
+                || FORBIDDEN_COTRA_ENV
+                    .iter()
+                    .any(|forbidden| upper == *forbidden)
+                || !allowed_execution_env(key)
+            {
+                continue;
+            }
+            entries.push((key.clone(), value.clone()));
+        }
+        for required in ["LOCALAPPDATA", "SystemRoot", "TEMP", "TMP"] {
+            if !entries
+                .iter()
+                .any(|(key, _)| key.eq_ignore_ascii_case(required))
+            {
+                return Err(ExecutionPlanError::new(format!(
+                    "required execution environment variable is unavailable: {required}"
+                )));
+            }
+        }
+        entries.sort_by_key(|entry| entry.0.to_ascii_lowercase());
+        let mut block = Vec::new();
+        for (key, value) in entries {
+            block.extend(key.encode_utf16());
+            block.push('=' as u16);
+            block.extend(value.encode_utf16());
+            block.push(0);
+        }
+        block.push(0);
+        Ok(block)
+    }
+
+    fn read_pipe(
+        pipe: &PrivatePipe,
+        output: &mut Vec<u8>,
+        limit: usize,
+    ) -> Result<bool, ExecutionPlanError> {
+        let mut available = 0u32;
+        let peeked = unsafe {
+            PeekNamedPipe(
+                pipe.read.raw(),
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+                &mut available,
+                ptr::null_mut(),
+            )
+        };
+        if peeked == 0 {
+            let code = unsafe { GetLastError() };
+            if code == ERROR_BROKEN_PIPE {
+                return Ok(false);
+            }
+            return Err(last_error("PeekNamedPipe"));
+        }
+        if available == 0 {
+            return Ok(true);
+        }
+        let remaining = limit.saturating_sub(output.len());
+        if available as usize > remaining {
+            return Err(ExecutionPlanError::new(
+                "private execution output limit exceeded",
+            ));
+        }
+        let mut buffer = vec![0u8; available as usize];
+        let mut read = 0u32;
+        if unsafe {
+            ReadFile(
+                pipe.read.raw(),
+                buffer.as_mut_ptr().cast(),
+                buffer.len() as u32,
+                &mut read,
+                ptr::null_mut(),
+            )
+        } == 0
+        {
+            let code = unsafe { GetLastError() };
+            if code == ERROR_BROKEN_PIPE {
+                return Ok(false);
+            }
+            return Err(last_error("ReadFile"));
+        }
+        buffer.truncate(read as usize);
+        output.extend_from_slice(&buffer);
+        Ok(true)
+    }
+
+    pub(super) fn qualify_private_execution(
+        plan: ExecutionPlan,
+        profile_name: &str,
+    ) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
+        let expected_executable = fixed_system_executable()
+            .map(|cmd| cmd.parent().map(|parent| parent.join("whoami.exe")))
+            .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.message))?
+            .ok_or_else(|| {
+                PrivateExecutionFailure::InvalidPlan("system directory is unavailable".into())
+            })?;
+        let expected_executable = std::fs::canonicalize(expected_executable)
+            .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.to_string()))?;
+        if expected_executable != plan.executable || plan.argv.len() != 1 || plan.argv[0] != "/all"
+        {
+            return Err(PrivateExecutionFailure::InvalidPlan(
+                "qualification executor accepts only whoami.exe /all".into(),
+            ));
+        }
+        let mut profile = AppContainerProfile::create(profile_name)
+            .map_err(|e| PrivateExecutionFailure::Provider(e.message))?;
+        let job =
+            JobObject::kill_on_close().map_err(|e| PrivateExecutionFailure::Provider(e.message))?;
+        let (stdout_pipe, stdout_write) =
+            PrivatePipe::create().map_err(|e| PrivateExecutionFailure::Provider(e.message))?;
+        let (stderr_pipe, stderr_write) =
+            PrivatePipe::create().map_err(|e| PrivateExecutionFailure::Provider(e.message))?;
+        let mut child = match ChildProcess::create_suspended_with_pipes(
+            profile.sid(),
+            &plan,
+            &stdout_write,
+            &stderr_write,
+        ) {
+            Ok(child) => child,
+            Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
+        };
+        drop(stdout_write);
+        drop(stderr_write);
+        if let Err(error) = job.assign_before_resume(&child) {
+            child.terminate_best_effort();
+            return Err(PrivateExecutionFailure::Provider(error.message));
+        }
+        if let Err(error) = child.verify_appcontainer_token() {
+            child.terminate_best_effort();
+            return Err(PrivateExecutionFailure::Provider(error.message));
+        }
+        if let Err(error) = child.resume() {
+            child.terminate_best_effort();
+            return Err(PrivateExecutionFailure::Provider(error.message));
+        }
+        let started = std::time::Instant::now();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut timed_out = false;
+        let mut output_limited = false;
+        loop {
+            if read_pipe(&stdout_pipe, &mut stdout, plan.limits.stdout_bytes).is_err() {
+                output_limited = true;
+            }
+            if read_pipe(&stderr_pipe, &mut stderr, plan.limits.stderr_bytes).is_err() {
+                output_limited = true;
+            }
+            if output_limited {
+                break;
+            }
+            let wait = unsafe { WaitForSingleObject(child.process.raw(), 0) };
+            if wait == WAIT_OBJECT_0 {
+                break;
+            }
+            if started.elapsed() >= plan.limits.timeout {
+                timed_out = true;
+                break;
+            }
+            unsafe {
+                Sleep(10);
+            }
+        }
+        if timed_out || output_limited {
+            let _ = job.terminate();
+            let _ = child.wait_for_completion();
+            let quiescent = job.active_processes().unwrap_or(1) == 0;
+            if !quiescent {
+                return Err(PrivateExecutionFailure::TerminationUnverified);
+            }
+            let _ = profile.delete();
+            return Err(if timed_out {
+                PrivateExecutionFailure::ProcessTimeout
+            } else {
+                PrivateExecutionFailure::OutputLimit
+            });
+        }
+        let exit_code = child
+            .wait_for_completion()
+            .map_err(|e| PrivateExecutionFailure::Provider(e.message))?;
+        let mut drain_error = false;
+        loop {
+            match read_pipe(&stdout_pipe, &mut stdout, plan.limits.stdout_bytes) {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(_) => {
+                    drain_error = true;
+                    break;
+                }
+            }
+        }
+        loop {
+            match read_pipe(&stderr_pipe, &mut stderr, plan.limits.stderr_bytes) {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(_) => {
+                    drain_error = true;
+                    break;
+                }
+            }
+        }
+        if drain_error {
+            let _ = job.terminate();
+            let quiescent = job.active_processes().unwrap_or(1) == 0;
+            let _ = profile.delete();
+            return Err(if !quiescent {
+                PrivateExecutionFailure::TerminationUnverified
+            } else {
+                PrivateExecutionFailure::OutputLimit
+            });
+        }
+        let quiescent = job
+            .active_processes()
+            .map_err(|e| PrivateExecutionFailure::Provider(e.message))?
+            == 0;
+        profile
+            .delete()
+            .map_err(|e| PrivateExecutionFailure::Provider(e.message))?;
+        if !quiescent {
+            return Err(PrivateExecutionFailure::TerminationUnverified);
+        }
+        Ok(PrivateExecutionResult {
+            exit_code,
+            stdout,
+            stderr,
+            appcontainer_verified: true,
+            assigned_to_job_before_resume: true,
+            job_quiescent: true,
         })
     }
 
@@ -1438,6 +2004,51 @@ mod contained_launch_tests {
         let actual = windows_contained_launch::fixed_system_executable()
             .expect("resolve fixed system executable");
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn windows_private_qualification_executes_bounded_argv_with_quiescent_job() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!("Cotra.Private.Exec.{suffix}"));
+        std::fs::create_dir_all(&workspace).expect("qualification workspace");
+        let executable = windows_contained_launch::fixed_system_executable()
+            .expect("system executable")
+            .parent()
+            .expect("system directory")
+            .join("whoami.exe");
+        let mut env = std::collections::BTreeMap::new();
+        for key in [
+            "LOCALAPPDATA",
+            "SystemRoot",
+            "TEMP",
+            "TMP",
+            "PATH",
+            "ComSpec",
+        ] {
+            let value = std::env::var(key).expect("required qualification environment");
+            env.insert(key.to_owned(), value);
+        }
+        let plan = build_execution_plan(
+            &workspace,
+            &executable,
+            &["/all".to_owned()],
+            ".",
+            &env,
+            ExecutionLimits::default(),
+        )
+        .expect("bounded private plan");
+        let profile = format!("Cotra.Private.Exec.{suffix}");
+        let result = qualify_private_execution(plan, &profile).expect("private execution");
+        assert!(result.appcontainer_verified);
+        assert!(result.assigned_to_job_before_resume);
+        assert!(result.job_quiescent);
+        assert_eq!(result.exit_code, 0);
+        assert!(!result.stdout.is_empty());
+        assert!(result.stderr.is_empty());
+        let _ = std::fs::remove_dir_all(workspace);
     }
 
     #[test]
