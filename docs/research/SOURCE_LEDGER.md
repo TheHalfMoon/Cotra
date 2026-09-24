@@ -240,6 +240,29 @@ Role:
 - optional future remote/sandbox provider;
 - not required for local Windows MVP.
 
+
+
+### cpjet64/rappct
+
+Pin:
+c02f9dd960645522009da3827a79bdc99f50c9c1
+
+Default branch:
+main
+
+Upstream license:
+MIT
+
+Role:
+- AppContainer process-launch research;
+- custom CreateProcessW environment diagnostics;
+- comparison source for RAII/lifetime and Job Object composition.
+
+Reuse classification for SG-000008:
+CONCEPT ONLY.
+
+Cotra independently implements its bounded qualification probe. No rappct implementation source is copied. The source was consulted after the first native Windows launch returned Win32 error 203; its documented essential-environment pattern informed Cotra's fixed allowlist while preserving Cotra's no-secret-inheritance rule.
+
 ## Source-use decision matrix
 
 openai/tunnel-client:
