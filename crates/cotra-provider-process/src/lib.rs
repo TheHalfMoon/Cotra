@@ -794,6 +794,13 @@ mod windows_contained_launch {
     }
 
     #[repr(C)]
+    struct SecurityAttributes {
+        length: u32,
+        security_descriptor: *mut c_void,
+        inherit_handle: i32,
+    }
+
+    #[repr(C)]
     struct SecurityCapabilities {
         app_container_sid: Psid,
         capabilities: *mut SidAndAttributes,
@@ -1358,13 +1365,6 @@ mod windows_contained_launch {
         ) -> Result<Self, ExecutionPlanError> {
             let stdin = null_input()?;
             let handles = [stdin.raw(), stdout.raw(), stderr.raw()];
-            for handle in handles {
-                if unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) }
-                    == 0
-                {
-                    return Err(last_error("SetHandleInformation(inheritable child handle)"));
-                }
-            }
             let mut security = SecurityCapabilities {
                 app_container_sid: profile_sid,
                 capabilities: ptr::null_mut(),
@@ -1536,7 +1536,20 @@ mod windows_contained_launch {
         fn create() -> Result<(Self, OwnedHandle), ExecutionPlanError> {
             let mut read = ptr::null_mut();
             let mut write = ptr::null_mut();
-            if unsafe { CreatePipe(&mut read, &mut write, ptr::null(), 0) } == 0 {
+            let attributes = SecurityAttributes {
+                length: mem::size_of::<SecurityAttributes>() as u32,
+                security_descriptor: ptr::null_mut(),
+                inherit_handle: 1,
+            };
+            if unsafe {
+                CreatePipe(
+                    &mut read,
+                    &mut write,
+                    (&attributes as *const SecurityAttributes).cast(),
+                    0,
+                )
+            } == 0
+            {
                 return Err(last_error("CreatePipe"));
             }
             let read = OwnedHandle::new(read, "CreatePipe read")?;
@@ -1551,13 +1564,18 @@ mod windows_contained_launch {
     fn null_input() -> Result<OwnedHandle, ExecutionPlanError> {
         let name = wide(OsStr::new("NUL"));
         let share = [FILE_SHARE_READ | FILE_SHARE_WRITE];
+        let attributes = SecurityAttributes {
+            length: mem::size_of::<SecurityAttributes>() as u32,
+            security_descriptor: ptr::null_mut(),
+            inherit_handle: 1,
+        };
         OwnedHandle::new(
             unsafe {
                 CreateFileW(
                     name.as_ptr(),
                     GENERIC_READ,
                     share.as_ptr(),
-                    ptr::null(),
+                    (&attributes as *const SecurityAttributes).cast(),
                     OPEN_EXISTING,
                     FILE_ATTRIBUTE_NORMAL,
                     ptr::null_mut(),
