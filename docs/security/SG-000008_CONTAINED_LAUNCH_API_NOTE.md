@@ -8,7 +8,7 @@ The native Windows probe:
 1. creates a unique temporary AppContainer profile with zero capabilities;
 2. builds STARTUPINFOEX with PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES;
 3. launches a fixed Windows system child with CreateProcessW using CREATE_SUSPENDED;
-4. passes no inherited handles and a minimal secret-free Unicode environment;
+4. passes no inherited handles and a fixed safe-name scrubbed Unicode environment;
 5. creates/configures a kill-on-close Job Object;
 6. assigns the suspended child to the Job Object;
 7. verifies Job membership with IsProcessInJob before resuming;
