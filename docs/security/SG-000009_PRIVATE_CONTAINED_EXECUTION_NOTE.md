@@ -21,7 +21,7 @@ The child receives only three explicitly listed inheritable handles through `PRO
 
 - termination: `TerminateJobObject` is followed by bounded polling of `JOBOBJECT_BASIC_ACCOUNTING_INFORMATION.active_processes`; only `ActiveProcesses == 0` promotes a destructive event to its typed result;
 - precedence: the first observed stdout/stderr overflow is retained over a later timeout observation, while any inability to terminate or verify zero active processes returns `TerminationUnverified` and never a less-severe result;
-- fixtures: fixed `choice.exe /T 30 /D Y /C Y` timeout mode, fixed `findstr.exe` stdout mode, and fixed `findstr.exe` stderr mode are selected only by provider-private qualification code and validated against exact executable/argument tuples;
+- fixtures: the fixed provider-private test-harness timeout mode (`--exact contained_launch_tests::private_timeout_fixture_child`), fixed `findstr.exe` stdout mode, and fixed `findstr.exe` stderr mode are selected only by provider-private qualification code and validated against exact executable/argument tuples;
 - no caller-selected executable, arguments, shell, PowerShell, network, ACL, browser/UI, elevation, approval, or `process.spawn` authority was added.
 
 The native Windows tests qualify timeout, independent stdout and stderr overflow, indeterminate termination classification, Job termination, and the existing no-argument `whoami.exe` regression. The tests are qualification evidence only; the failure modes are not an external process API.

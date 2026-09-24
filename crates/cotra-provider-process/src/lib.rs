@@ -1805,32 +1805,31 @@ mod windows_contained_launch {
         profile_name: &str,
         mode: PrivateExecutionMode,
     ) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
-        let expected_executable = fixed_system_executable()
-            .map(|cmd| {
-                cmd.parent().map(|parent| match mode {
-                    PrivateExecutionMode::Success => parent.join("whoami.exe"),
-                    PrivateExecutionMode::Timeout => parent.join("choice.exe"),
-                    PrivateExecutionMode::StdoutLimit | PrivateExecutionMode::StderrLimit => {
-                        parent.join("findstr.exe")
-                    }
+        let expected_executable = match mode {
+            PrivateExecutionMode::Success
+            | PrivateExecutionMode::StdoutLimit
+            | PrivateExecutionMode::StderrLimit => fixed_system_executable()
+                .map(|cmd| {
+                    cmd.parent().map(|parent| match mode {
+                        PrivateExecutionMode::Success => parent.join("whoami.exe"),
+                        _ => parent.join("findstr.exe"),
+                    })
                 })
-            })
-            .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.message))?
-            .ok_or_else(|| {
-                PrivateExecutionFailure::InvalidPlan("system directory is unavailable".into())
-            })?;
+                .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.message))?
+                .ok_or_else(|| {
+                    PrivateExecutionFailure::InvalidPlan("system directory is unavailable".into())
+                })?,
+            PrivateExecutionMode::Timeout => std::env::current_exe()
+                .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.to_string()))?,
+        };
         let expected_executable = std::fs::canonicalize(expected_executable)
             .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.to_string()))?;
         let expected_argv: Vec<String> = match mode {
             PrivateExecutionMode::Success => Vec::new(),
             PrivateExecutionMode::Timeout => {
                 vec![
-                    "/T".into(),
-                    "30".into(),
-                    "/D".into(),
-                    "Y".into(),
-                    "/C".into(),
-                    "Y".into(),
+                    "--exact".into(),
+                    "contained_launch_tests::private_timeout_fixture_child".into(),
                 ]
             }
             PrivateExecutionMode::StdoutLimit => {
@@ -2261,6 +2260,13 @@ mod contained_launch_tests {
     }
 
     #[test]
+    fn private_timeout_fixture_child() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    }
+
+    #[test]
     fn windows_private_timeout_is_verified_and_typed() {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2271,12 +2277,22 @@ mod contained_launch_tests {
             stdout_bytes: 1024,
             stderr_bytes: 1024,
         };
-        let (workspace, plan) = private_failure_plan(
-            suffix,
-            "choice.exe",
-            &["/T", "30", "/D", "Y", "/C", "Y"],
+        let workspace = std::env::temp_dir().join(format!("Cotra.Private.Failure.{suffix}"));
+        std::fs::create_dir_all(&workspace).expect("qualification workspace");
+        let executable = std::env::current_exe().expect("timeout fixture executable");
+        let plan = build_execution_plan(
+            &workspace,
+            &executable,
+            &[
+                "--exact".to_owned(),
+                "contained_launch_tests::private_timeout_fixture_child".to_owned(),
+            ],
+            ".",
+            &private_qualification_env(),
             limits,
-        );
+        )
+        .expect("bounded private plan");
+        let (workspace, plan) = (workspace, plan);
         let result = qualify_private_execution_mode(
             plan,
             &format!("Cotra.Private.Timeout.{suffix}"),
