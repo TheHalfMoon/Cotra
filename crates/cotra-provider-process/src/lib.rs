@@ -774,12 +774,6 @@ mod windows_contained_launch {
             app_container_sid: *mut Psid,
         ) -> Hresult;
         fn DeleteAppContainerProfile(app_container_name: *const u16) -> Hresult;
-        fn CreateEnvironmentBlock(
-            environment: *mut *mut c_void,
-            token: Handle,
-            inherit: i32,
-        ) -> i32;
-        fn DestroyEnvironmentBlock(environment: *mut c_void) -> i32;
     }
 
     #[link(name = "advapi32")]
@@ -1025,38 +1019,6 @@ mod windows_contained_launch {
         }
     }
 
-    struct SystemEnvironmentBlock(*mut c_void);
-
-    impl SystemEnvironmentBlock {
-        fn create() -> Result<Self, ExecutionPlanError> {
-            let mut environment = ptr::null_mut();
-            let created = unsafe { CreateEnvironmentBlock(&mut environment, ptr::null_mut(), 0) };
-            if created == 0 {
-                return Err(last_error("CreateEnvironmentBlock(system-only)"));
-            }
-            if environment.is_null() {
-                return Err(ExecutionPlanError::new(
-                    "CreateEnvironmentBlock returned a null system environment",
-                ));
-            }
-            Ok(Self(environment))
-        }
-
-        fn raw(&self) -> *mut c_void {
-            self.0
-        }
-    }
-
-    impl Drop for SystemEnvironmentBlock {
-        fn drop(&mut self) {
-            if !self.0.is_null() {
-                unsafe {
-                    DestroyEnvironmentBlock(self.0);
-                }
-            }
-        }
-    }
-
     struct JobObject {
         handle: OwnedHandle,
     }
@@ -1140,7 +1102,7 @@ mod windows_contained_launch {
 
             let application = wide(executable.as_os_str());
             let mut command_line = command_line_for_cmd(&executable);
-            let environment = SystemEnvironmentBlock::create()?;
+            let mut environment = filtered_environment_block()?;
 
             let mut process_information: ProcessInformation = unsafe { mem::zeroed() };
             let created = unsafe {
@@ -1154,7 +1116,7 @@ mod windows_contained_launch {
                         | CREATE_UNICODE_ENVIRONMENT
                         | EXTENDED_STARTUPINFO_PRESENT
                         | CREATE_NO_WINDOW,
-                    environment.raw(),
+                    environment.as_mut_ptr().cast(),
                     ptr::null(),
                     (&startup as *const StartupInfoExW).cast(),
                     &mut process_information,
@@ -1307,6 +1269,61 @@ mod windows_contained_launch {
         command.extend(" /d /q /c exit 0".encode_utf16());
         command.push(0);
         command
+    }
+
+    fn filtered_environment_block() -> Result<Vec<u16>, ExecutionPlanError> {
+        const SAFE_KEYS: &[&str] = &[
+            "APPDATA",
+            "ComSpec",
+            "HOMEDRIVE",
+            "HOMEPATH",
+            "LOCALAPPDATA",
+            "NUMBER_OF_PROCESSORS",
+            "OS",
+            "PATH",
+            "PATHEXT",
+            "PROCESSOR_ARCHITECTURE",
+            "SystemDrive",
+            "SystemRoot",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "WINDIR",
+        ];
+
+        let mut entries = Vec::<(String, std::ffi::OsString)>::new();
+        for key in SAFE_KEYS {
+            if let Some(value) = std::env::var_os(key) {
+                entries.push(((*key).to_owned(), value));
+            }
+        }
+
+        for required in ["LOCALAPPDATA", "SystemRoot", "TEMP", "TMP"] {
+            if !entries
+                .iter()
+                .any(|(key, _)| key.eq_ignore_ascii_case(required))
+            {
+                return Err(ExecutionPlanError::new(format!(
+                    "required Windows launch environment variable is unavailable: {required}"
+                )));
+            }
+        }
+
+        entries.sort_by(|left, right| {
+            left.0
+                .to_ascii_lowercase()
+                .cmp(&right.0.to_ascii_lowercase())
+        });
+
+        let mut environment = Vec::<u16>::new();
+        for (key, value) in entries {
+            environment.extend(key.encode_utf16());
+            environment.push('=' as u16);
+            environment.extend(value.encode_wide());
+            environment.push(0);
+        }
+        environment.push(0);
+        Ok(environment)
     }
 
     fn wide(value: &OsStr) -> Vec<u16> {
