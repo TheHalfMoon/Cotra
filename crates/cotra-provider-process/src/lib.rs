@@ -295,6 +295,28 @@ mod tests {
     }
 
     #[test]
+    fn validates_appcontainer_profile_names() {
+        assert!(validate_appcontainer_name("Cotra.Probe.123").is_ok());
+        assert!(validate_appcontainer_name("").is_err());
+        assert!(validate_appcontainer_name("Cotra/Probe").is_err());
+        assert!(validate_appcontainer_name(&"a".repeat(65)).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_appcontainer_profile_lifecycle_is_available() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let name = format!("Cotra.Probe.{}.{}", std::process::id(), suffix);
+        let result = probe_appcontainer_profile(&name).expect("AppContainer lifecycle");
+        assert!(result.profile_created);
+        assert!(result.sid_derived);
+        assert!(result.profile_deleted);
+    }
+
+    #[test]
     fn rejects_unbounded_limits() {
         let workspace = root("limits");
         let exe = executable(&workspace);
@@ -313,5 +335,150 @@ mod tests {
         .unwrap_err();
         assert!(error.message.contains("30 minutes"));
         let _ = fs::remove_dir_all(workspace);
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppContainerProbe {
+    pub profile_created: bool,
+    pub sid_derived: bool,
+    pub profile_deleted: bool,
+}
+
+pub fn validate_appcontainer_name(name: &str) -> Result<(), ExecutionPlanError> {
+    if name.is_empty() || name.encode_utf16().count() > 64 {
+        return Err(ExecutionPlanError::new(
+            "AppContainer name must contain 1..=64 UTF-16 code units",
+        ));
+    }
+    if !name
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ' '))
+    {
+        return Err(ExecutionPlanError::new(
+            "AppContainer name contains a character outside the Windows allowed set",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+pub fn probe_appcontainer_profile(name: &str) -> Result<AppContainerProbe, ExecutionPlanError> {
+    windows_appcontainer::probe(name)
+}
+
+#[cfg(not(windows))]
+pub fn probe_appcontainer_profile(_name: &str) -> Result<AppContainerProbe, ExecutionPlanError> {
+    Err(ExecutionPlanError::new(
+        "AppContainer probing is available only on Windows",
+    ))
+}
+
+#[cfg(windows)]
+mod windows_appcontainer {
+    use super::{validate_appcontainer_name, AppContainerProbe, ExecutionPlanError};
+    use core::ffi::c_void;
+    use std::ptr;
+
+    type Hresult = i32;
+    type Psid = *mut c_void;
+
+    #[repr(C)]
+    struct SidAndAttributes {
+        sid: Psid,
+        attributes: u32,
+    }
+
+    #[link(name = "userenv")]
+    unsafe extern "system" {
+        fn CreateAppContainerProfile(
+            app_container_name: *const u16,
+            display_name: *const u16,
+            description: *const u16,
+            capabilities: *const SidAndAttributes,
+            capability_count: u32,
+            app_container_sid: *mut Psid,
+        ) -> Hresult;
+
+        fn DeriveAppContainerSidFromAppContainerName(
+            app_container_name: *const u16,
+            app_container_sid: *mut Psid,
+        ) -> Hresult;
+
+        fn DeleteAppContainerProfile(app_container_name: *const u16) -> Hresult;
+    }
+
+    #[link(name = "advapi32")]
+    unsafe extern "system" {
+        fn FreeSid(sid: Psid) -> *mut c_void;
+    }
+
+    pub(super) fn probe(name: &str) -> Result<AppContainerProbe, ExecutionPlanError> {
+        validate_appcontainer_name(name)?;
+        let name = wide(name);
+        let display = wide("Cotra execution probe");
+        let description = wide("Temporary Cotra AppContainer capability probe");
+
+        let mut created_sid: Psid = ptr::null_mut();
+        let create_hr = unsafe {
+            CreateAppContainerProfile(
+                name.as_ptr(),
+                display.as_ptr(),
+                description.as_ptr(),
+                ptr::null(),
+                0,
+                &mut created_sid,
+            )
+        };
+        if create_hr != 0 {
+            return Err(hresult_error("CreateAppContainerProfile", create_hr));
+        }
+
+        if !created_sid.is_null() {
+            unsafe {
+                FreeSid(created_sid);
+            }
+        }
+
+        let mut derived_sid: Psid = ptr::null_mut();
+        let derive_hr =
+            unsafe { DeriveAppContainerSidFromAppContainerName(name.as_ptr(), &mut derived_sid) };
+        if derive_hr != 0 {
+            let _ = unsafe { DeleteAppContainerProfile(name.as_ptr()) };
+            return Err(hresult_error(
+                "DeriveAppContainerSidFromAppContainerName",
+                derive_hr,
+            ));
+        }
+
+        if !derived_sid.is_null() {
+            unsafe {
+                FreeSid(derived_sid);
+            }
+        }
+
+        let delete_hr = unsafe { DeleteAppContainerProfile(name.as_ptr()) };
+        if delete_hr != 0 {
+            let _ = unsafe { DeleteAppContainerProfile(name.as_ptr()) };
+            return Err(hresult_error("DeleteAppContainerProfile", delete_hr));
+        }
+
+        Ok(AppContainerProbe {
+            profile_created: true,
+            sid_derived: true,
+            profile_deleted: true,
+        })
+    }
+
+    fn wide(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn hresult_error(operation: &str, code: Hresult) -> ExecutionPlanError {
+        ExecutionPlanError::new(format!(
+            "{operation} failed with HRESULT 0x{:08X}",
+            code as u32
+        ))
     }
 }
