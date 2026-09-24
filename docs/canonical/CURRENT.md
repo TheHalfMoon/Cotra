@@ -2,7 +2,11 @@
 
 Status: IMPLEMENTATION
 Date: 2026-09-24
-Canonical main: 617b06ca234298f5cca184d66c04df5ce1b1b4cc
+Canonical main: b350932c4226fc5250a2d234c1927149f7c49064
+
+SG-000009 closeout merge (historical): 617b06ca234298f5cca184d66c04df5ce1b1b4cc
+
+The canonical main line above records the current repository head after SG-000009A governance activation. It is intentionally distinct from the historical SG-000009 closeout merge above.
 
 SG-000001 through SG-000009 are COMPLETE_CANONICAL.
 
@@ -34,7 +38,7 @@ Active grain:
 SG-000009A - Destructive timeout and output-limit termination qualification
 
 Branch:
-feat/sg-000009a-destructive-termination
+feat/sg-000009a-implementation
 
 SG-000009A must prove:
 - fixed provider-private timeout and output-limit child modes
