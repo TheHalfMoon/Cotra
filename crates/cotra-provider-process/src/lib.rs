@@ -650,6 +650,17 @@ pub fn probe_contained_appcontainer_job_launch(
 
 #[cfg(windows)]
 mod windows_contained_launch {
+    // SAFETY MODEL:
+    // - All FFI declarations mirror documented Win32 ABI signatures and use repr(C) structs.
+    // - OwnedHandle and AppContainerProfile are the sole owners of returned handles/SIDs and
+    //   release them exactly once through Drop or an explicit successful delete.
+    // - UTF-16 pointers passed to Win32 APIs are backed by live Vec<u16> values for the full call.
+    // - STARTUPINFOEX and PROCESS_INFORMATION are zero-initialized POD Win32 records whose cb
+    //   and attribute-list fields are populated before CreateProcessW.
+    // - The PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES payload and attribute-list allocation
+    //   outlive CreateProcessW; no pointer is retained by Cotra after that call returns.
+    // - Child and Job handles remain valid for every token/job/process operation that uses them.
+    // Individual unsafe blocks below are kept narrow and rely on these invariants.
     use super::{validate_appcontainer_name, ContainedLaunchProbe, ExecutionPlanError};
     use core::ffi::c_void;
     use std::ffi::OsStr;
