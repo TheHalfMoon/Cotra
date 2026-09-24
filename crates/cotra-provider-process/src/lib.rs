@@ -1382,7 +1382,7 @@ mod windows_contained_launch {
             let process_executable = path_for_process_api(&plan.executable);
             let process_cwd = path_for_process_api(&plan.cwd);
             let application = wide(process_executable.as_os_str());
-            let mut command_line = command_line_for_plan(plan);
+            let mut command_line = command_line_for_paths(&process_executable, &plan.argv);
             let mut environment = environment_from_plan(plan)?;
             let current_directory = wide(process_cwd.as_os_str());
             let mut information: ProcessInformation = unsafe { mem::zeroed() };
@@ -1622,9 +1622,9 @@ mod windows_contained_launch {
         path.to_path_buf()
     }
 
-    fn command_line_for_plan(plan: &ExecutionPlan) -> Vec<u16> {
-        let mut command = quote_arg(&plan.executable.to_string_lossy());
-        for arg in &plan.argv {
+    fn command_line_for_paths(executable: &Path, argv: &[String]) -> Vec<u16> {
+        let mut command = quote_arg(&executable.to_string_lossy());
+        for arg in argv {
             command.push(' ' as u16);
             command.extend(quote_arg(arg));
         }
