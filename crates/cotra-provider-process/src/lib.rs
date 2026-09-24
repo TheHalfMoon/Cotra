@@ -619,7 +619,6 @@ mod job_object_tests {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContainedLaunchProbe {
     pub profile_created: bool,
@@ -1315,11 +1314,7 @@ mod contained_launch_tests {
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
-        let name = format!(
-            "Cotra.Contained.{}.{}",
-            std::process::id(),
-            suffix
-        );
+        let name = format!("Cotra.Contained.{}.{}", std::process::id(), suffix);
 
         let result =
             probe_contained_appcontainer_job_launch(&name).expect("contained child launch");
