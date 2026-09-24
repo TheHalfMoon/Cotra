@@ -60,7 +60,9 @@ impl TunnelConfig {
 
     pub fn validate(&self) -> Result<(), String> {
         if !valid_tunnel_id(&self.tunnel_id) {
-            return Err("COTRA_TUNNEL_ID must match tunnel_<32 lowercase alphanumeric characters>".into());
+            return Err(
+                "COTRA_TUNNEL_ID must match tunnel_<32 lowercase alphanumeric characters>".into(),
+            );
         }
         require_absolute_existing_file(&self.tunnel_client, "tunnel-client")?;
         require_absolute_existing_file(&self.mcp_command, "Cotra MCP command")?;
@@ -166,7 +168,6 @@ pub fn status(config: &TunnelConfig) -> serde_json::Value {
         }),
     }
 }
-
 
 fn valid_tunnel_id(value: &str) -> bool {
     let Some(suffix) = value.strip_prefix("tunnel_") else {
@@ -315,7 +316,6 @@ mod tests {
         assert!(!rendered.contains("sk-proj-test"));
         let _ = fs::remove_dir_all(dir);
     }
-
 
     #[test]
     fn mcp_command_path_is_quoted_for_spaces_and_backslashes() {
