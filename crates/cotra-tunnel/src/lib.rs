@@ -59,8 +59,8 @@ impl TunnelConfig {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if !self.tunnel_id.starts_with("tunnel_") || self.tunnel_id.len() < 12 {
-            return Err("COTRA_TUNNEL_ID must be a tunnel_... identifier".into());
+        if !valid_tunnel_id(&self.tunnel_id) {
+            return Err("COTRA_TUNNEL_ID must match tunnel_<32 lowercase alphanumeric characters>".into());
         }
         require_absolute_existing_file(&self.tunnel_client, "tunnel-client")?;
         require_absolute_existing_file(&self.mcp_command, "Cotra MCP command")?;
@@ -68,9 +68,9 @@ impl TunnelConfig {
         if !self.health_url_file.is_absolute() {
             return Err("health URL file path must be absolute".into());
         }
-        let key = fs::read_to_string(&self.runtime_key_file)
-            .map_err(|e| format!("read runtime key file: {e}"))?;
-        if key.trim().is_empty() {
+        let key_metadata = fs::metadata(&self.runtime_key_file)
+            .map_err(|e| format!("inspect runtime key file: {e}"))?;
+        if key_metadata.len() == 0 {
             return Err("runtime key file is empty".into());
         }
 
@@ -91,7 +91,7 @@ impl TunnelConfig {
         let key_ref = format!("file:{}", self.runtime_key_file.display());
         let mcp_binding = format!(
             "channel=main,command={}",
-            self.mcp_command.to_string_lossy()
+            quote_stdio_command_path(&self.mcp_command)?
         );
         let args = vec![
             "run".into(),
@@ -165,6 +165,26 @@ pub fn status(config: &TunnelConfig) -> serde_json::Value {
             "runtime_key_in_environment": false
         }),
     }
+}
+
+
+fn valid_tunnel_id(value: &str) -> bool {
+    let Some(suffix) = value.strip_prefix("tunnel_") else {
+        return false;
+    };
+    suffix.len() == 32
+        && suffix
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+}
+
+fn quote_stdio_command_path(path: &Path) -> Result<String, String> {
+    let raw = path.to_string_lossy();
+    if raw.contains(',') {
+        return Err("Cotra MCP command path must not contain a comma".into());
+    }
+    let escaped = raw.replace('\\', "\\\\").replace('"', "\\"");
+    Ok(format!("\"{escaped}\""))
 }
 
 fn required(name: &str) -> Result<String, String> {
@@ -265,7 +285,7 @@ mod tests {
         (
             TunnelConfig {
                 tunnel_client: tunnel,
-                tunnel_id: "tunnel_0123456789".into(),
+                tunnel_id: "tunnel_0123456789abcdefghijklmnopqrstuv".into(),
                 runtime_key_file: key,
                 mcp_command: mcp,
                 health_url_file: dir.join("health.url"),
@@ -293,6 +313,33 @@ mod tests {
         let rendered = plan.args.join(" ");
         assert!(rendered.contains("--control-plane.api-key file:"));
         assert!(!rendered.contains("sk-proj-test"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+
+    #[test]
+    fn mcp_command_path_is_quoted_for_spaces_and_backslashes() {
+        let (mut cfg, dir) = config();
+        let spaced = dir.join("Program Files").join("Cotra");
+        fs::create_dir_all(&spaced).unwrap();
+        cfg.mcp_command = file(&spaced, "cotra-mcp.exe", "binary");
+        let plan = cfg.launch_plan(&BTreeMap::new()).unwrap();
+        let binding = plan
+            .args
+            .iter()
+            .skip_while(|arg| arg.as_str() != "--mcp.command")
+            .nth(1)
+            .unwrap();
+        assert!(binding.starts_with("channel=main,command=\""));
+        assert!(binding.ends_with("cotra-mcp.exe\""));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn malformed_tunnel_ids_are_rejected_locally() {
+        let (mut cfg, dir) = config();
+        cfg.tunnel_id = "tunnel_TOO_SHORT".into();
+        assert!(cfg.validate().unwrap_err().contains("must match"));
         let _ = fs::remove_dir_all(dir);
     }
 
