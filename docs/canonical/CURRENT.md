@@ -4,7 +4,7 @@ Status: IMPLEMENTATION
 Date: 2026-09-24
 Canonical base for active work: 4aa28b128a27d21cf6fa768ca34d44db4b3b39cc
 
-SG-000001 through SG-000004 are merged.
+SG-000001 through SG-000004 are COMPLETE_CANONICAL.
 
 SG-000004 exact-head CI:
 - run 35969551340
@@ -12,8 +12,8 @@ SG-000004 exact-head CI:
 
 SG-000004 post-merge CI:
 - run 35969805332
-- IN_PROGRESS at activation of SG-000005
-- SG-000004 is not claimed COMPLETE_CANONICAL until that run finishes successfully.
+- 5/5 SUCCESS
+- SG-000004 is COMPLETE_CANONICAL.
 
 Canonical implemented capabilities before SG-000005:
 - system.status
