@@ -42,3 +42,25 @@ ABI provenance:
 - PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES value cross-checked against Microsoft windows-rs / Win32 metadata.
 - No Microsoft implementation source code is copied.
 - FFI structures and declarations mirror documented public Win32 ABI only.
+
+
+## Environment repair note
+
+The first native Windows run reached CreateProcessW but failed with Win32 error 203 after Cotra supplied an environment containing only SystemRoot and WINDIR.
+
+Cotra keeps the secret-isolation invariant and does not fall back to full parent-environment inheritance. The probe now supplies a case-insensitively sorted allowlist of Windows launch essentials only:
+- ComSpec
+- PATH
+- PATHEXT
+- SystemRoot
+- TEMP
+- TMP
+- WINDIR
+
+Microsoft documents that a caller-provided environment block replaces the parent environment and must be a sorted, double-NUL-terminated Unicode block when CREATE_UNICODE_ENVIRONMENT is used.
+
+Concept provenance:
+- cpjet64/rappct @ c02f9dd960645522009da3827a79bdc99f50c9c1
+- MIT license
+- concept-only reuse: its launch documentation/code identifies essential Windows variables needed when using a custom CreateProcessW environment and specifically calls out error 203.
+- no rappct implementation source is copied.
