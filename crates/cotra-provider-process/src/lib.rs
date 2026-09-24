@@ -1380,11 +1380,9 @@ mod windows_contained_launch {
             startup.startup_info.dw_flags = 0x0000_0100;
             startup.attribute_list = attributes.raw();
             let process_executable = path_for_process_api(&plan.executable);
-            let process_cwd = path_for_process_api(&plan.cwd);
             let application = wide(process_executable.as_os_str());
             let mut command_line = command_line_for_paths(&process_executable, &plan.argv);
             let mut environment = environment_from_plan(plan)?;
-            let current_directory = wide(process_cwd.as_os_str());
             let mut information: ProcessInformation = unsafe { mem::zeroed() };
             let created = unsafe {
                 CreateProcessW(
@@ -1398,7 +1396,7 @@ mod windows_contained_launch {
                         | EXTENDED_STARTUPINFO_PRESENT
                         | CREATE_NO_WINDOW,
                     environment.as_mut_ptr().cast(),
-                    current_directory.as_ptr(),
+                    ptr::null(),
                     (&startup as *const StartupInfoExW).cast(),
                     &mut information,
                 )
