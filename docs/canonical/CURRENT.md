@@ -2,16 +2,17 @@
 
 Status: IMPLEMENTATION
 Date: 2026-09-24
-Canonical main: 2524b8f8bbf3ff196cb1bc2915312e785ab7a858
+Canonical main: ba6aa919d35432db0c049ca970be29f95767041f
 
-SG-000001 through SG-000008 are COMPLETE_CANONICAL.
+SG-000001 through SG-000009 are COMPLETE_CANONICAL.
 
-SG-000008:
-- exact-head CI 36017984916 ? SUCCESS
-- Review Gates 36017981120 ? SUCCESS
-- merge 2524b8f8bbf3ff196cb1bc2915312e785ab7a858
-- post-merge CI 36018639615 ? SUCCESS
-- native Windows AppContainer suspended launch, token verification, Job membership before resume, bounded completion, and cleanup proven
+SG-000009:
+- qualified head ca17e5b5f8145dfb01ad0ad6102587ef7f80ed76
+- merge ba6aa919d35432db0c049ca970be29f95767041f
+- pre-merge CI 36027271683 - SUCCESS
+- Review Gates 36027269455 - SUCCESS; Jev 20/20 hunks, zero findings; OCR exact range PASSED
+- post-merge CI 36029004410 - SUCCESS
+- native Windows fixed no-argument whoami.exe AppContainer qualification proven
 
 Canonical capabilities:
 - system.status
@@ -28,23 +29,18 @@ Canonical capabilities:
 Live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
 
 Active grain:
-SG-000009 ? Private bounded argv execution qualification
+Next P05 successor - destructive timeout/output-limit descendant-tree runtime qualification
 
 Branch:
-feat/sg-000009-private-contained-argv
+to be created from canonical main after SG-000009 closeout
 
-SG-000009 must prove:
-- fixed private `whoami.exe` execution without arguments without shell interpolation
-- explicit absolute executable plus validated workspace-bound cwd applied to CreateProcessW
-- scrubbed environment and an explicit three-handle allowlist: NUL stdin, stdout, stderr
-- AppContainer token and Job membership verification before resume
-- bounded stdout/stderr capture, exit code, and bounded completion
-- zero active Job processes before success
+Next P05 successor must prove:
+- destructive timeout termination with verified Job/process-tree quiescence
+- output-limit termination with verified Job/process-tree quiescence
+- cancellation distinguished from unverified termination
+- no expansion of process.spawn, PowerShell, arbitrary executable, network, ACL, browser/UI, elevation, or approval authority
 
-Deferred to successor work:
-- destructive timeout/output-limit runtime qualification
-- descendant-tree termination fixtures
-- any caller-selected process authority or configured workspace grant
+SG-000009 remains canonical for the fixed private no-argument child success path. Destructive timeout/output-limit descendant-tree runtime qualification remains deferred and is the next lawful unit.
 
 Still denied / absent:
 - process.spawn MCP authority

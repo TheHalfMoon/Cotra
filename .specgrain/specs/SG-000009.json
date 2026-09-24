@@ -2,7 +2,7 @@
   "id": "SG-000009",
   "title": "Private bounded argv execution qualification",
   "program": "COTRA-P05",
-  "state": "GRAIN",
+  "state": "PROVEN",
   "risk": "high",
   "created": "2026-09-24",
   "base": "2524b8f8bbf3ff196cb1bc2915312e785ab7a858",
@@ -96,5 +96,17 @@
     "security_review": true,
     "exact_head_ci": true
   },
-  "done_when": "The fixed private bounded executor success path is merged with exact-head and post-merge verification; destructive timeout/output-limit and descendant-tree runtime qualification remain explicit successor work, and no external EXECUTE authority is exposed."
+  "done_when": "The fixed private bounded executor success path is merged with exact-head and post-merge verification; destructive timeout/output-limit and descendant-tree runtime qualification remain explicit successor work, and no external EXECUTE authority is exposed.",
+  "canonical_evidence": {
+    "merge_sha": "ba6aa919d35432db0c049ca970be29f95767041f",
+    "qualified_head": "ca17e5b5f8145dfb01ad0ad6102587ef7f80ed76",
+    "pre_merge_ci": "36027271683",
+    "pre_merge_review_gates": "36027269455",
+    "post_merge_ci": "36029004410",
+    "native_windows": "SUCCESS",
+    "jev": "PASSED: 20/20 hunks, zero findings, zero blocking findings",
+    "ocr": "PASSED: exact range, 4 files, 2 reviewable, 2 excluded",
+    "resolved_fixture_diagnostic": "whoami.exe /all returned exit code 1: ERROR: Unable to get user claims information.; final fixed no-argument whoami.exe passed",
+    "deferred": "Destructive timeout/output-limit descendant-tree runtime qualification remains successor work."
+  }
 }
