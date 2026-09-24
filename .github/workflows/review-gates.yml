@@ -1,0 +1,125 @@
+name: Review Gates
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ocr-delegation:
+    name: Alibaba OCR Delegation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install pinned OpenCodeReview
+        run: npm install --global @alibaba-group/open-code-review@1.12.9
+      - name: Verify OpenCodeReview
+        run: ocr --version
+      - name: Generate deterministic delegation spec
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$BASE_SHA^{commit}"
+          git cat-file -e "$HEAD_SHA^{commit}"
+          ocr delegate preview --format json --from "$BASE_SHA" --to "$HEAD_SHA" | tee ocr-preview.json
+          python - <<'PY'
+          import json
+          import subprocess
+
+          with open("ocr-preview.json", encoding="utf-8") as handle:
+              preview = json.load(handle)
+
+          files = preview.get("reviewable_files", [])
+          print(f"OCR reviewable files: {len(files)}")
+          for path in files:
+              print(f" - {path}")
+
+          if files:
+              completed = subprocess.run(
+                  ["ocr", "delegate", "rule", "--format", "json", *files],
+                  check=True,
+                  text=True,
+                  stdout=subprocess.PIPE,
+              )
+              with open("ocr-rules.json", "w", encoding="utf-8") as handle:
+                  handle.write(completed.stdout)
+              print(completed.stdout)
+          else:
+              with open("ocr-rules.json", "w", encoding="utf-8") as handle:
+                  json.dump({"groups": []}, handle)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ocr-delegation-${{ github.event.pull_request.head.sha }}
+          path: |
+            ocr-preview.json
+            ocr-rules.json
+          if-no-files-found: error
+          retention-days: 14
+
+  jev-review:
+    name: Jev Semantic Review
+    runs-on: ubuntu-latest
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      JEV_REVIEW_SHA: 31f89602797fb7bea007f8a480bf368bf564954e
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.base.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Require TypeSafe credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${TYPESAFE_API_KEY:-}" ]; then
+            echo "::error::TYPESAFE_API_KEY is not configured for Cotra GitHub Actions; Jev review is UNPROVEN."
+            exit 1
+          fi
+      - name: Materialize exact PR diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$BASE_SHA^{commit}"
+          git cat-file -e "$HEAD_SHA^{commit}"
+          git diff --binary "$BASE_SHA" "$HEAD_SHA" > /tmp/cotra-pr.patch
+          git apply --whitespace=nowarn /tmp/cotra-pr.patch
+          git diff --check
+          git status --short
+      - name: Install pinned Jev Review
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/devagrawal09/jev-review.git .review-tools/jev-review
+          git -C .review-tools/jev-review checkout --detach "$JEV_REVIEW_SHA"
+          npm --prefix .review-tools/jev-review ci
+          printf 'TYPESAFE_API_KEY=%s\n' "$TYPESAFE_API_KEY" > .review-tools/jev-review/.env
+          chmod 600 .review-tools/jev-review/.env
+      - name: Run Jev exact-diff review
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix .review-tools/jev-review run review:changes -- "$GITHUB_WORKSPACE" > jev-review.json
+          cat jev-review.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jev-review-${{ github.event.pull_request.head.sha }}
+          path: jev-review.json
+          if-no-files-found: warn
+          retention-days: 14
