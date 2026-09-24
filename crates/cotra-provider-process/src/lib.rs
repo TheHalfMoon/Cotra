@@ -1806,46 +1806,36 @@ mod windows_contained_launch {
         mode: PrivateExecutionMode,
     ) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
         let expected_executable = match mode {
-            PrivateExecutionMode::Success
-            | PrivateExecutionMode::StdoutLimit
-            | PrivateExecutionMode::StderrLimit => fixed_system_executable()
-                .map(|cmd| {
-                    cmd.parent().map(|parent| match mode {
-                        PrivateExecutionMode::Success => parent.join("whoami.exe"),
-                        _ => parent.join("findstr.exe"),
-                    })
-                })
+            PrivateExecutionMode::Success => fixed_system_executable()
+                .map(|cmd| cmd.parent().map(|parent| parent.join("whoami.exe")))
                 .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.message))?
                 .ok_or_else(|| {
                     PrivateExecutionFailure::InvalidPlan("system directory is unavailable".into())
                 })?,
-            PrivateExecutionMode::Timeout => std::env::current_exe()
+            PrivateExecutionMode::Timeout
+            | PrivateExecutionMode::StdoutLimit
+            | PrivateExecutionMode::StderrLimit => std::env::current_exe()
                 .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.to_string()))?,
         };
         let expected_executable = std::fs::canonicalize(expected_executable)
             .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.to_string()))?;
         let expected_argv: Vec<String> = match mode {
             PrivateExecutionMode::Success => Vec::new(),
-            PrivateExecutionMode::Timeout => {
-                vec![
-                    "--exact".into(),
-                    "contained_launch_tests::private_timeout_fixture_child".into(),
-                ]
-            }
-            PrivateExecutionMode::StdoutLimit => {
-                vec![
-                    "/R".into(),
-                    "/N".into(),
-                    "x".into(),
-                    "C:\\Windows\\win.ini".into(),
-                ]
-            }
-            PrivateExecutionMode::StderrLimit => {
-                vec![
-                    "/C:x".into(),
-                    "C:\\Windows\\System32\\does-not-exist".into(),
-                ]
-            }
+            PrivateExecutionMode::Timeout => vec![
+                "--exact".into(),
+                "contained_launch_tests::private_timeout_fixture_child".into(),
+                "--nocapture".into(),
+            ],
+            PrivateExecutionMode::StdoutLimit => vec![
+                "--exact".into(),
+                "contained_launch_tests::private_stdout_fixture_child".into(),
+                "--nocapture".into(),
+            ],
+            PrivateExecutionMode::StderrLimit => vec![
+                "--exact".into(),
+                "contained_launch_tests::private_stderr_fixture_child".into(),
+                "--nocapture".into(),
+            ],
         };
         if expected_executable != plan.executable || expected_argv != plan.argv {
             return Err(PrivateExecutionFailure::InvalidPlan(
@@ -2194,31 +2184,6 @@ mod contained_launch_tests {
         env
     }
 
-    fn private_failure_plan(
-        suffix: u128,
-        executable_name: &str,
-        argv: &[&str],
-        limits: ExecutionLimits,
-    ) -> (PathBuf, ExecutionPlan) {
-        let workspace = std::env::temp_dir().join(format!("Cotra.Private.Failure.{suffix}"));
-        std::fs::create_dir_all(&workspace).expect("qualification workspace");
-        let executable = windows_contained_launch::fixed_system_executable()
-            .expect("system executable")
-            .parent()
-            .expect("system directory")
-            .join(executable_name);
-        let plan = build_execution_plan(
-            &workspace,
-            &executable,
-            &argv.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>(),
-            ".",
-            &private_qualification_env(),
-            limits,
-        )
-        .expect("bounded private plan");
-        (workspace, plan)
-    }
-
     #[test]
     fn windows_private_qualification_executes_bounded_fixed_child_with_quiescent_job() {
         let suffix = SystemTime::now()
@@ -2259,8 +2224,95 @@ mod contained_launch_tests {
         let _ = std::fs::remove_dir_all(workspace);
     }
 
+    fn private_fixture_plan(
+        suffix: u128,
+        test_name: &str,
+        limits: ExecutionLimits,
+    ) -> (PathBuf, ExecutionPlan) {
+        let workspace = std::env::temp_dir().join(format!("Cotra.Private.Failure.{suffix}"));
+        std::fs::create_dir_all(&workspace).expect("qualification workspace");
+        let executable = std::env::current_exe().expect("fixture executable");
+        let plan = build_execution_plan(
+            &workspace,
+            &executable,
+            &[
+                "--exact".to_owned(),
+                test_name.to_owned(),
+                "--nocapture".to_owned(),
+            ],
+            ".",
+            &private_qualification_env(),
+            limits,
+        )
+        .expect("bounded private plan");
+        (workspace, plan)
+    }
+
     #[test]
     fn private_timeout_fixture_child() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            let mut descendant =
+                std::process::Command::new(std::env::current_exe().expect("fixture executable"))
+                    .args([
+                        "--exact",
+                        "contained_launch_tests::private_timeout_descendant",
+                    ])
+                    .spawn()
+                    .expect("spawn timeout descendant");
+            std::thread::sleep(Duration::from_secs(30));
+            let _ = descendant.wait();
+        }
+    }
+
+    #[test]
+    fn private_timeout_descendant() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    }
+
+    #[test]
+    fn private_stdout_fixture_child() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            let mut descendant =
+                std::process::Command::new(std::env::current_exe().expect("fixture executable"))
+                    .args([
+                        "--exact",
+                        "contained_launch_tests::private_output_descendant",
+                    ])
+                    .spawn()
+                    .expect("spawn stdout descendant");
+            let mut stdout = std::io::stdout().lock();
+            use std::io::Write;
+            let _ = stdout.write_all(&vec![b'x'; 4096]);
+            let _ = stdout.flush();
+            std::thread::sleep(Duration::from_secs(30));
+            let _ = descendant.wait();
+        }
+    }
+
+    #[test]
+    fn private_stderr_fixture_child() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            let mut descendant =
+                std::process::Command::new(std::env::current_exe().expect("fixture executable"))
+                    .args([
+                        "--exact",
+                        "contained_launch_tests::private_output_descendant",
+                    ])
+                    .spawn()
+                    .expect("spawn stderr descendant");
+            let mut stderr = std::io::stderr().lock();
+            use std::io::Write;
+            let _ = stderr.write_all(&vec![b'x'; 4096]);
+            let _ = stderr.flush();
+            std::thread::sleep(Duration::from_secs(30));
+            let _ = descendant.wait();
+        }
+    }
+
+    #[test]
+    fn private_output_descendant() {
         if std::env::args().any(|argument| argument == "--exact") {
             std::thread::sleep(Duration::from_secs(30));
         }
@@ -2277,22 +2329,11 @@ mod contained_launch_tests {
             stdout_bytes: 1024,
             stderr_bytes: 1024,
         };
-        let workspace = std::env::temp_dir().join(format!("Cotra.Private.Failure.{suffix}"));
-        std::fs::create_dir_all(&workspace).expect("qualification workspace");
-        let executable = std::env::current_exe().expect("timeout fixture executable");
-        let plan = build_execution_plan(
-            &workspace,
-            &executable,
-            &[
-                "--exact".to_owned(),
-                "contained_launch_tests::private_timeout_fixture_child".to_owned(),
-            ],
-            ".",
-            &private_qualification_env(),
+        let (workspace, plan) = private_fixture_plan(
+            suffix,
+            "contained_launch_tests::private_timeout_fixture_child",
             limits,
-        )
-        .expect("bounded private plan");
-        let (workspace, plan) = (workspace, plan);
+        );
         let result = qualify_private_execution_mode(
             plan,
             &format!("Cotra.Private.Timeout.{suffix}"),
@@ -2313,10 +2354,9 @@ mod contained_launch_tests {
             stdout_bytes: 1,
             stderr_bytes: 1024,
         };
-        let (workspace, plan) = private_failure_plan(
+        let (workspace, plan) = private_fixture_plan(
             suffix,
-            "findstr.exe",
-            &["/R", "/N", "x", "C:\\Windows\\win.ini"],
+            "contained_launch_tests::private_stdout_fixture_child",
             limits,
         );
         let result = qualify_private_execution_mode(
@@ -2342,10 +2382,9 @@ mod contained_launch_tests {
             stdout_bytes: 1024,
             stderr_bytes: 1,
         };
-        let (workspace, plan) = private_failure_plan(
+        let (workspace, plan) = private_fixture_plan(
             suffix,
-            "findstr.exe",
-            &["/C:x", "C:\\Windows\\System32\\does-not-exist"],
+            "contained_launch_tests::private_stderr_fixture_child",
             limits,
         );
         let result = qualify_private_execution_mode(
