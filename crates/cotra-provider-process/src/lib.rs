@@ -1030,8 +1030,7 @@ mod windows_contained_launch {
     impl SystemEnvironmentBlock {
         fn create() -> Result<Self, ExecutionPlanError> {
             let mut environment = ptr::null_mut();
-            let created =
-                unsafe { CreateEnvironmentBlock(&mut environment, ptr::null_mut(), 0) };
+            let created = unsafe { CreateEnvironmentBlock(&mut environment, ptr::null_mut(), 0) };
             if created == 0 {
                 return Err(last_error("CreateEnvironmentBlock(system-only)"));
             }
