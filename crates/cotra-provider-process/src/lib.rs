@@ -1358,6 +1358,13 @@ mod windows_contained_launch {
         ) -> Result<Self, ExecutionPlanError> {
             let stdin = null_input()?;
             let handles = [stdin.raw(), stdout.raw(), stderr.raw()];
+            for handle in handles {
+                if unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) }
+                    == 0
+                {
+                    return Err(last_error("SetHandleInformation(inheritable child handle)"));
+                }
+            }
             let mut security = SecurityCapabilities {
                 app_container_sid: profile_sid,
                 capabilities: ptr::null_mut(),
