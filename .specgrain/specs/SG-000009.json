@@ -1,0 +1,99 @@
+{
+  "id": "SG-000009",
+  "title": "Private bounded argv execution qualification",
+  "program": "COTRA-P05",
+  "state": "GRAIN",
+  "risk": "high",
+  "created": "2026-09-24",
+  "base": "2524b8f8bbf3ff196cb1bc2915312e785ab7a858",
+  "dependencies": [
+    "SG-000005",
+    "SG-000006",
+    "SG-000007",
+    "SG-000008"
+  ],
+  "objective": "Qualify a provider-internal Windows executor for deterministic argv-based child execution with AppContainer identity, kill-on-close Job lifecycle, scrubbed environment, bounded stdout/stderr, timeout cancellation, and verified process-tree quiescence, without exposing process.spawn through policy, cotrad, or MCP.",
+  "scope": {
+    "include": [
+      "explicit absolute executable and argv validation",
+      "workspace-bound cwd",
+      "case-insensitive fixed-name environment allowlist",
+      "AppContainer suspended launch and token verification",
+      "Job assignment and membership before resume",
+      "closed stdin and bounded stdout/stderr capture",
+      "timeout cancellation with verified Job quiescence",
+      "typed provider result and failure evidence",
+      "native Windows qualification fixture"
+    ],
+    "exclude": [
+      "process.spawn MCP registration",
+      "PowerShell",
+      "caller-selected arbitrary executable authority",
+      "network capability",
+      "workspace grants beyond an explicit qualification root",
+      "browser",
+      "UI automation",
+      "elevation",
+      "approval"
+    ]
+  },
+  "authority_delta": {
+    "filesystem": "Qualification-only explicit temporary root; no configured workspace grant",
+    "process": "Private test-only provider executor; no external or MCP process authority",
+    "network": "None; zero AppContainer capabilities",
+    "browser": "None",
+    "ui_input": "None",
+    "secrets": "Fixed environment allowlist; no Cotra/tunnel secret inheritance",
+    "approval": "No change",
+    "privileged": "None"
+  },
+  "invariants": [
+    "The executor is unreachable from policy, cotrad, and MCP",
+    "The executable is an explicitly validated absolute path and argv is passed without shell interpolation",
+    "The child is created suspended in a zero-capability AppContainer",
+    "The scrubbed environment excludes Cotra, tunnel, generic secret, and arbitrary caller variables",
+    "No inheritable handles or stdin input are passed to the child",
+    "Job membership and AppContainer token are verified before resume",
+    "stdout and stderr are independently bounded and over-limit termination is verified",
+    "Timeout cancellation terminates the Job and returns PROCESS_TIMEOUT only after quiescence is verified",
+    "All failure paths close handles and remove temporary profiles/qualification resources"
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "claim": "Native Windows tests launch a deterministic qualification child with argv and return bounded stdout/stderr and exit code."
+    },
+    {
+      "id": "A2",
+      "claim": "Native tests reject malformed argv, non-absolute executables, and invalid cwd/environment inputs."
+    },
+    {
+      "id": "A3",
+      "claim": "Native tests prove no sensitive environment values and no inherited handles reach the child."
+    },
+    {
+      "id": "A4",
+      "claim": "Native timeout test terminates a descendant tree and verifies zero active Job processes before returning typed timeout evidence."
+    },
+    {
+      "id": "A5",
+      "claim": "Native output-limit tests terminate and verify quiescence without returning success."
+    },
+    {
+      "id": "A6",
+      "claim": "Non-Windows builds remain cfg-isolated and existing policy continues denying process.spawn."
+    },
+    {
+      "id": "A7",
+      "claim": "Exact-head Windows/Ubuntu Rust, Node, Governance, Jev, and OCR gates pass."
+    }
+  ],
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": "where integrated",
+    "security_review": true,
+    "exact_head_ci": true
+  },
+  "done_when": "The private bounded executor and native qualification are merged with post-merge verification; no external EXECUTE authority is exposed."
+}
