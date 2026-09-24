@@ -240,6 +240,43 @@ Role:
 - optional future remote/sandbox provider;
 - not required for local Windows MVP.
 
+### alibaba/open-code-review
+
+Pin:
+v1.12.9
+
+Release commit/source:
+https://github.com/alibaba/open-code-review/releases/tag/v1.12.9
+
+Upstream license:
+Apache-2.0
+
+Role:
+- deterministic review file selection and rule resolution;
+- Delegation Mode qualification without an OCR-managed LLM credential.
+
+Integration:
+EXTERNAL REVIEW TOOL. NO SOURCE COPIED.
+
+Cotra downloads the official Alibaba OpenCodeReview v1.12.9 Linux release binary, verifies its pinned SHA-256 before use, and runs `ocr delegate preview` and `ocr delegate rule` against the exact PR base/head range. OCR Delegation Mode does not itself constitute semantic judgment; the host reviewer must review every OCR-selected file and manually review excluded files. The candidate checkout is treated only as data and its package scripts are never executed.
+
+### devagrawal09/jev-review
+
+Pin:
+31f89602797fb7bea007f8a480bf368bf564954e
+
+Upstream license:
+MIT
+
+Role:
+- TypeSafe Jev staged semantic/security code review;
+- exact-diff review evidence.
+
+Integration:
+EXTERNAL REVIEW TOOL. NO SOURCE COPIED.
+
+Cotra uses a base-controlled `pull_request_target` workflow, checks out the exact base SHA, fetches the PR head only as Git data, and runs the base SHA's exact-diff adapter against `base..head`. The adapter sends every changed-file hunk, including deletions, to genuine TypeSafe Jev structured judgments, records per-hunk coverage and severity-rated findings, and fails closed on incomplete coverage or a blocking finding. PR-controlled code is never executed in the secret-bearing job. The Jev checkout and SDK remain under `RUNNER_TEMP`, outside the Cotra repository working tree. A TypeSafe API key is required. Missing credentials fail the Jev gate explicitly rather than being treated as a pass.
+
 ## Source-use decision matrix
 
 openai/tunnel-client:
