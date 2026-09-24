@@ -1824,7 +1824,14 @@ mod windows_contained_launch {
         let expected_argv: Vec<String> = match mode {
             PrivateExecutionMode::Success => Vec::new(),
             PrivateExecutionMode::Timeout => {
-                vec!["/T".into(), "30".into(), "/D".into(), "Y".into()]
+                vec![
+                    "/T".into(),
+                    "30".into(),
+                    "/D".into(),
+                    "Y".into(),
+                    "/C".into(),
+                    "Y".into(),
+                ]
             }
             PrivateExecutionMode::StdoutLimit => {
                 vec![
@@ -2264,8 +2271,12 @@ mod contained_launch_tests {
             stdout_bytes: 1024,
             stderr_bytes: 1024,
         };
-        let (workspace, plan) =
-            private_failure_plan(suffix, "choice.exe", &["/T", "30", "/D", "Y"], limits);
+        let (workspace, plan) = private_failure_plan(
+            suffix,
+            "choice.exe",
+            &["/T", "30", "/D", "Y", "/C", "Y"],
+            limits,
+        );
         let result = qualify_private_execution_mode(
             plan,
             &format!("Cotra.Private.Timeout.{suffix}"),
