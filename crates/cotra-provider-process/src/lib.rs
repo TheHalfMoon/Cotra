@@ -756,7 +756,7 @@ mod windows_contained_launch {
     use std::ffi::{OsStr, OsString};
     use std::mem;
     use std::os::windows::ffi::{OsStrExt, OsStringExt};
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::ptr;
 
     type Handle = *mut c_void;
@@ -1379,10 +1379,12 @@ mod windows_contained_launch {
             startup.startup_info.h_std_error = stderr.raw();
             startup.startup_info.dw_flags = 0x0000_0100;
             startup.attribute_list = attributes.raw();
-            let application = wide(plan.executable.as_os_str());
+            let process_executable = path_for_process_api(&plan.executable);
+            let process_cwd = path_for_process_api(&plan.cwd);
+            let application = wide(process_executable.as_os_str());
             let mut command_line = command_line_for_plan(plan);
             let mut environment = environment_from_plan(plan)?;
-            let current_directory = wide(plan.cwd.as_os_str());
+            let current_directory = wide(process_cwd.as_os_str());
             let mut information: ProcessInformation = unsafe { mem::zeroed() };
             let created = unsafe {
                 CreateProcessW(
@@ -1605,6 +1607,19 @@ mod windows_contained_launch {
         out.extend(std::iter::repeat_n('\\' as u16, backslashes * 2));
         out.push('"' as u16);
         out
+    }
+
+    fn path_for_process_api(path: &Path) -> PathBuf {
+        let raw: Vec<u16> = path.as_os_str().encode_wide().collect();
+        if raw.starts_with(&[0x5c, 0x5c, 0x3f, 0x5c]) {
+            let mut stripped = raw[4..].to_vec();
+            if stripped.starts_with(&[b'U' as u16, b'N' as u16, b'C' as u16, 0x5c]) {
+                stripped.drain(0..3);
+                stripped.insert(0, 0x5c);
+            }
+            return PathBuf::from(OsString::from_wide(&stripped));
+        }
+        path.to_path_buf()
     }
 
     fn command_line_for_plan(plan: &ExecutionPlan) -> Vec<u16> {
