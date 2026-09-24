@@ -407,12 +407,6 @@ mod windows_appcontainer {
         ) -> Hresult;
 
         fn DeleteAppContainerProfile(app_container_name: *const u16) -> Hresult;
-        fn CreateEnvironmentBlock(
-            environment: *mut *mut c_void,
-            token: Handle,
-            inherit: i32,
-        ) -> i32;
-        fn DestroyEnvironmentBlock(environment: *mut c_void) -> i32;
     }
 
     #[link(name = "advapi32")]
@@ -780,6 +774,12 @@ mod windows_contained_launch {
             app_container_sid: *mut Psid,
         ) -> Hresult;
         fn DeleteAppContainerProfile(app_container_name: *const u16) -> Hresult;
+        fn CreateEnvironmentBlock(
+            environment: *mut *mut c_void,
+            token: Handle,
+            inherit: i32,
+        ) -> i32;
+        fn DestroyEnvironmentBlock(environment: *mut c_void) -> i32;
     }
 
     #[link(name = "advapi32")]
