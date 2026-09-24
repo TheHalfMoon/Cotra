@@ -118,8 +118,6 @@ jobs:
           git diff --check
           git status --short
       - name: Install pinned Jev Review
-        env:
-          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -127,16 +125,16 @@ jobs:
           git clone https://github.com/devagrawal09/jev-review.git "$JEV_DIR"
           git -C "$JEV_DIR" checkout --detach "$JEV_REVIEW_SHA"
           npm --prefix "$JEV_DIR" ci
-          printf 'TYPESAFE_API_KEY=%s\n' "$TYPESAFE_API_KEY" > "$JEV_DIR/.env"
-          chmod 600 "$JEV_DIR/.env"
-      - name: Run Jev exact-diff review
+      - name: Verify Cotra exact-diff Jev adapter
+        run: node --check .github/scripts/jev-exact-diff.mjs
+      - name: Run genuine Jev exact-diff review
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
           JEV_DIR="$RUNNER_TEMP/jev-review"
-          trap 'rm -f "$JEV_DIR/.env"' EXIT
-          npm --prefix "$JEV_DIR" run review:changes -- "$GITHUB_WORKSPACE" > jev-review.json
-          cat jev-review.json
+          node .github/scripts/jev-exact-diff.mjs "$BASE_SHA" "$HEAD_SHA" "$GITHUB_WORKSPACE" "$JEV_DIR" | tee jev-review.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

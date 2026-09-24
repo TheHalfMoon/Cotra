@@ -16,6 +16,7 @@
     "include": [
       "PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES setup",
       "zero-capability SECURITY_CAPABILITIES",
+      "fixed system executable resolved from the Windows system directory without caller-controlled path variables",
       "CreateProcessW with EXTENDED_STARTUPINFO_PRESENT and CREATE_SUSPENDED",
       "fixed-name scrubbed Unicode child environment including AppContainer profile roots",
       "Job Object kill-on-close configuration",
@@ -49,6 +50,7 @@
     "privileged": "None"
   },
   "invariants": [
+    "The child executable is the fixed cmd.exe name under the operating system directory returned by GetSystemDirectoryW, not a path derived from caller environment",
     "The child is created suspended",
     "The child token is verified as AppContainer before resume",
     "The child is assigned to the Cotra Job Object and IsProcessInJob is true before resume",

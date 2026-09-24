@@ -7,7 +7,7 @@ SG-000008 combines the stable Windows primitives qualified separately by SG-0000
 The native Windows probe:
 1. creates a unique temporary AppContainer profile with zero capabilities;
 2. builds STARTUPINFOEX with PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES;
-3. launches a fixed Windows system child with CreateProcessW using CREATE_SUSPENDED;
+3. resolves the fixed cmd.exe image under the operating system directory returned by GetSystemDirectoryW and launches it with CreateProcessW using CREATE_SUSPENDED;
 4. passes no inherited handles and a fixed safe-name scrubbed Unicode environment;
 5. creates/configures a kill-on-close Job Object;
 6. assigns the suspended child to the Job Object;
@@ -17,6 +17,7 @@ The native Windows probe:
 10. waits with a finite timeout, records its exit code, and cleans up.
 
 Security interpretation:
+- GetSystemDirectoryW resolves the operating system directory independently of caller-controlled `SystemRoot` or `WINDIR` values; only the fixed `cmd.exe` name is appended.
 - AppContainer is the resource-isolation boundary.
 - Job Object is lifecycle/resource control, not the sandbox by itself.
 - CREATE_SUSPENDED prevents user code from running before Job assignment.
@@ -30,6 +31,7 @@ Official Microsoft references:
 - https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-initializeprocthreadattributelist
 - https://learn.microsoft.com/en-us/windows/desktop/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute
 - https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw
+- https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemdirectoryw
 - https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject
 - https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-isprocessinjob
 - https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-resumethread

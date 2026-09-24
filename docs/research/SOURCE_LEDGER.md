@@ -304,7 +304,7 @@ Role:
 Integration:
 EXTERNAL REVIEW TOOL. NO SOURCE COPIED.
 
-Cotra checks out the PR base, materializes the exact base..head diff into the working tree, then runs Jev Review against that working diff. A TypeSafe API key is required. Missing credentials fail the Jev gate explicitly rather than being treated as a pass.
+Cotra checks out the PR base, verifies and materializes the exact `base..head` diff, and runs a Cotra-owned exact-diff adapter against the `@typesafe-ai/sdk` installed by that pinned Jev checkout. The adapter sends every changed-file hunk to genuine TypeSafe Jev structured judgments, records per-hunk coverage and severity-rated findings, and fails closed on incomplete coverage or a blocking finding. The Jev checkout and SDK remain under `RUNNER_TEMP`, outside the Cotra repository working tree. A TypeSafe API key is required. Missing credentials fail the Jev gate explicitly rather than being treated as a pass.
 
 ## Source-use decision matrix
 

@@ -663,10 +663,10 @@ mod windows_contained_launch {
     // Individual unsafe blocks below are kept narrow and rely on these invariants.
     use super::{validate_appcontainer_name, ContainedLaunchProbe, ExecutionPlanError};
     use core::ffi::c_void;
-    use std::ffi::OsStr;
+    use std::ffi::{OsStr, OsString};
     use std::mem;
-    use std::os::windows::ffi::OsStrExt;
-    use std::path::{Path, PathBuf};
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use std::path::Path;
     use std::ptr;
 
     type Handle = *mut c_void;
@@ -849,6 +849,7 @@ mod windows_contained_launch {
         fn ResumeThread(thread: Handle) -> u32;
         fn WaitForSingleObject(handle: Handle, milliseconds: u32) -> u32;
         fn GetExitCodeProcess(process: Handle, exit_code: *mut u32) -> i32;
+        fn GetSystemDirectoryW(buffer: *mut u16, size: u32) -> u32;
         fn TerminateProcess(process: Handle, exit_code: u32) -> i32;
         fn CloseHandle(object: Handle) -> i32;
         fn GetLastError() -> u32;
@@ -1088,16 +1089,7 @@ mod windows_contained_launch {
 
     impl ChildProcess {
         fn create_suspended(profile_sid: Psid) -> Result<Self, ExecutionPlanError> {
-            let system_root = std::env::var_os("SystemRoot")
-                .ok_or_else(|| ExecutionPlanError::new("SystemRoot is unavailable"))?;
-            let system32 = PathBuf::from(&system_root).join("System32");
-            let executable = system32.join("cmd.exe");
-            if !executable.is_file() {
-                return Err(ExecutionPlanError::new(format!(
-                    "contained probe executable does not exist: {}",
-                    executable.display()
-                )));
-            }
+            let executable = fixed_system_executable()?;
 
             let mut security = SecurityCapabilities {
                 app_container_sid: profile_sid,
@@ -1337,6 +1329,53 @@ mod windows_contained_launch {
         Ok(environment)
     }
 
+    pub(super) fn fixed_system_executable() -> Result<std::path::PathBuf, ExecutionPlanError> {
+        const INITIAL_BUFFER_CHARS: usize = 260;
+        const MAX_SYSTEM_DIRECTORY_CHARS: usize = 32_767;
+
+        let mut buffer = vec![0u16; INITIAL_BUFFER_CHARS];
+        let copied =
+            unsafe { GetSystemDirectoryW(buffer.as_mut_ptr(), INITIAL_BUFFER_CHARS as u32) };
+        let copied = if copied == 0 {
+            return Err(last_error("GetSystemDirectoryW"));
+        } else if copied < INITIAL_BUFFER_CHARS as u32 {
+            usize::try_from(copied).map_err(|_| {
+                ExecutionPlanError::new("GetSystemDirectoryW returned an invalid length")
+            })?
+        } else {
+            let capacity = usize::try_from(copied)
+                .ok()
+                .filter(|capacity| *capacity <= MAX_SYSTEM_DIRECTORY_CHARS)
+                .ok_or_else(|| {
+                    ExecutionPlanError::new("GetSystemDirectoryW returned an invalid size")
+                })?;
+            buffer.resize(capacity, 0);
+            let copied = unsafe { GetSystemDirectoryW(buffer.as_mut_ptr(), capacity as u32) };
+            if copied == 0 {
+                return Err(last_error("GetSystemDirectoryW(resized)"));
+            }
+            let copied = usize::try_from(copied).map_err(|_| {
+                ExecutionPlanError::new("GetSystemDirectoryW returned an invalid length")
+            })?;
+            if copied + 1 > capacity {
+                return Err(ExecutionPlanError::new(
+                    "GetSystemDirectoryW returned an invalid length",
+                ));
+            }
+            copied
+        };
+        buffer.truncate(copied);
+
+        let executable = Path::new(OsString::from_wide(&buffer).as_os_str()).join("cmd.exe");
+        if !executable.is_file() {
+            return Err(ExecutionPlanError::new(format!(
+                "contained probe executable does not exist: {}",
+                executable.display()
+            )));
+        }
+        Ok(executable)
+    }
+
     fn wide(value: &OsStr) -> Vec<u16> {
         value.encode_wide().chain(std::iter::once(0)).collect()
     }
@@ -1357,10 +1396,53 @@ mod windows_contained_launch {
 #[cfg(all(test, windows))]
 mod contained_launch_tests {
     use super::*;
+    use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvironmentVarGuard {
+        key: &'static str,
+        original: Option<std::ffi::OsString>,
+    }
+
+    impl EnvironmentVarGuard {
+        fn replace(key: &'static str, value: &str) -> Self {
+            let original = std::env::var_os(key);
+            // SAFETY: The caller holds ENVIRONMENT_LOCK for the guard's lifetime.
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvironmentVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: The guard holds ENVIRONMENT_LOCK until this destructor completes.
+            unsafe {
+                match &self.original {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn fixed_system_executable_ignores_caller_controlled_system_root() {
+        let _environment_lock = ENVIRONMENT_LOCK.lock().expect("environment lock");
+        let expected = windows_contained_launch::fixed_system_executable()
+            .expect("resolve fixed system executable");
+        let _environment = EnvironmentVarGuard::replace("SystemRoot", r"C:\caller-controlled");
+        let actual = windows_contained_launch::fixed_system_executable()
+            .expect("resolve fixed system executable");
+        assert_eq!(actual, expected);
+    }
 
     #[test]
     fn windows_appcontainer_child_is_job_assigned_before_resume() {
+        let _guard = ENVIRONMENT_LOCK.lock().expect("environment lock");
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
