@@ -6,14 +6,18 @@
   "risk": "high",
   "created": "2026-09-24",
   "base": "ed5cd2be9acd7aac93754965d055c82f77a01884",
-  "dependencies": ["SG-000005", "SG-000006", "SG-000007"],
+  "dependencies": [
+    "SG-000005",
+    "SG-000006",
+    "SG-000007"
+  ],
   "objective": "Prove on native Windows CI that Cotra can create a zero-capability AppContainer child suspended, assign it to a kill-on-close Job Object before resume, verify its AppContainer token and Job membership, resume it, observe bounded completion, and clean up without exposing external EXECUTE authority.",
   "scope": {
     "include": [
       "PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES setup",
       "zero-capability SECURITY_CAPABILITIES",
       "CreateProcessW with EXTENDED_STARTUPINFO_PRESENT and CREATE_SUSPENDED",
-      "minimal secret-free Unicode child environment",
+      "system-only Unicode child environment via CreateEnvironmentBlock(NULL, FALSE)",
       "Job Object kill-on-close configuration",
       "AssignProcessToJobObject before ResumeThread",
       "IsProcessInJob verification before resume",
@@ -40,7 +44,7 @@
     "network": "None; AppContainer capability_count is zero",
     "browser": "None",
     "ui_input": "None",
-    "secrets": "Child receives only SystemRoot and WINDIR; no Cotra/tunnel secret environment",
+    "secrets": "Child receives a fresh system-only Windows environment from CreateEnvironmentBlock(NULL, FALSE); the calling process/user environment is not inherited",
     "approval": "No change",
     "privileged": "None"
   },
@@ -49,20 +53,41 @@
     "The child token is verified as AppContainer before resume",
     "The child is assigned to the Cotra Job Object and IsProcessInJob is true before resume",
     "The AppContainer is created with zero capabilities",
-    "The child receives no inherited handles and only a minimal environment",
+    "The child receives no inherited handles and does not inherit the calling process/user environment",
     "The Job Object uses JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE",
     "Failure after child creation performs best-effort termination",
     "Temporary AppContainer profile and Win32 handles are cleaned up",
     "process.spawn and PowerShell remain absent from policy and MCP"
   ],
   "acceptance": [
-    {"id": "A1", "claim": "Native Windows test creates a zero-capability AppContainer process suspended."},
-    {"id": "A2", "claim": "TokenIsAppContainer is nonzero for the suspended child."},
-    {"id": "A3", "claim": "AssignProcessToJobObject succeeds and IsProcessInJob confirms membership before ResumeThread."},
-    {"id": "A4", "claim": "The child resumes, exits within the bounded timeout, and exit code is recorded."},
-    {"id": "A5", "claim": "Temporary profile and process/thread/job/attribute-list resources are cleaned up."},
-    {"id": "A6", "claim": "Non-Windows builds remain cfg-isolated from Win32 linkage."},
-    {"id": "A7", "claim": "Exact-head Windows/Ubuntu Rust, Node, and Governance CI pass."}
+    {
+      "id": "A1",
+      "claim": "Native Windows test creates a zero-capability AppContainer process suspended."
+    },
+    {
+      "id": "A2",
+      "claim": "TokenIsAppContainer is nonzero for the suspended child."
+    },
+    {
+      "id": "A3",
+      "claim": "AssignProcessToJobObject succeeds and IsProcessInJob confirms membership before ResumeThread."
+    },
+    {
+      "id": "A4",
+      "claim": "The child resumes, exits within the bounded timeout, and exit code is recorded."
+    },
+    {
+      "id": "A5",
+      "claim": "Temporary profile and process/thread/job/attribute-list resources are cleaned up."
+    },
+    {
+      "id": "A6",
+      "claim": "Non-Windows builds remain cfg-isolated from Win32 linkage."
+    },
+    {
+      "id": "A7",
+      "claim": "Exact-head Windows/Ubuntu Rust, Node, and Governance CI pass."
+    }
   ],
   "review": {
     "diffcipline": true,
