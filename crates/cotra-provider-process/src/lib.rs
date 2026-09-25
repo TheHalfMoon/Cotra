@@ -712,8 +712,23 @@ pub enum PrivateExecutionFailure {
     InvalidPlan(String),
     Provider(String),
     ProcessTimeout,
-    OutputLimit,
+    OutputLimit(OutputStream),
     TerminationUnverified,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PrivateExecutionMode {
+    Success,
+    Timeout,
+    StdoutLimit,
+    StderrLimit,
 }
 
 #[cfg(windows)]
@@ -721,7 +736,16 @@ pub fn qualify_private_execution(
     plan: ExecutionPlan,
     profile_name: &str,
 ) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
-    windows_contained_launch::qualify_private_execution(plan, profile_name)
+    qualify_private_execution_mode(plan, profile_name, PrivateExecutionMode::Success)
+}
+
+#[cfg(windows)]
+pub(crate) fn qualify_private_execution_mode(
+    plan: ExecutionPlan,
+    profile_name: &str,
+    mode: PrivateExecutionMode,
+) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
+    windows_contained_launch::qualify_private_execution(plan, profile_name, mode)
 }
 
 #[cfg(not(windows))]
@@ -749,8 +773,8 @@ mod windows_contained_launch {
     // Individual unsafe blocks below are kept narrow and rely on these invariants.
     use super::{
         allowed_execution_env, validate_appcontainer_name, ContainedLaunchProbe, ExecutionPlan,
-        ExecutionPlanError, PrivateExecutionFailure, PrivateExecutionResult, FORBIDDEN_COTRA_ENV,
-        SECRETISH,
+        ExecutionPlanError, OutputStream, PrivateExecutionFailure, PrivateExecutionMode,
+        PrivateExecutionResult, FORBIDDEN_COTRA_ENV, SECRETISH,
     };
     use core::ffi::c_void;
     use std::ffi::{OsStr, OsString};
@@ -786,6 +810,8 @@ mod windows_contained_launch {
     const HANDLE_FLAG_INHERIT: u32 = 0x0000_0001;
     const JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION_CLASS: i32 = 1;
     const ERROR_BROKEN_PIPE: u32 = 109;
+    const QUIESCENCE_POLL_MS: u64 = 10;
+    const QUIESCENCE_TIMEOUT_MS: u64 = 5_000;
 
     #[repr(C)]
     struct SidAndAttributes {
@@ -1250,6 +1276,22 @@ mod windows_contained_launch {
             Ok(())
         }
 
+        fn wait_for_quiescence(&self) -> Result<bool, ExecutionPlanError> {
+            let deadline =
+                std::time::Instant::now() + std::time::Duration::from_millis(QUIESCENCE_TIMEOUT_MS);
+            loop {
+                if self.active_processes()? == 0 {
+                    return Ok(true);
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Ok(false);
+                }
+                unsafe {
+                    Sleep(QUIESCENCE_POLL_MS as u32);
+                }
+            }
+        }
+
         fn active_processes(&self) -> Result<u32, ExecutionPlanError> {
             let mut information = JobObjectBasicAccountingInformation::default();
             let queried = unsafe {
@@ -1671,11 +1713,17 @@ mod windows_contained_launch {
         Ok(block)
     }
 
+    enum PipeRead {
+        Open,
+        Closed,
+        LimitExceeded,
+    }
+
     fn read_pipe(
         pipe: &PrivatePipe,
         output: &mut Vec<u8>,
         limit: usize,
-    ) -> Result<bool, ExecutionPlanError> {
+    ) -> Result<PipeRead, ExecutionPlanError> {
         let mut available = 0u32;
         let peeked = unsafe {
             PeekNamedPipe(
@@ -1690,18 +1738,16 @@ mod windows_contained_launch {
         if peeked == 0 {
             let code = unsafe { GetLastError() };
             if code == ERROR_BROKEN_PIPE {
-                return Ok(false);
+                return Ok(PipeRead::Closed);
             }
             return Err(last_error("PeekNamedPipe"));
         }
         if available == 0 {
-            return Ok(true);
+            return Ok(PipeRead::Open);
         }
         let remaining = limit.saturating_sub(output.len());
         if available as usize > remaining {
-            return Err(ExecutionPlanError::new(
-                "private execution output limit exceeded",
-            ));
+            return Ok(PipeRead::LimitExceeded);
         }
         let mut buffer = vec![0u8; available as usize];
         let mut read = 0u32;
@@ -1717,30 +1763,83 @@ mod windows_contained_launch {
         {
             let code = unsafe { GetLastError() };
             if code == ERROR_BROKEN_PIPE {
-                return Ok(false);
+                return Ok(PipeRead::Closed);
             }
             return Err(last_error("ReadFile"));
         }
         buffer.truncate(read as usize);
         output.extend_from_slice(&buffer);
-        Ok(true)
+        Ok(PipeRead::Open)
+    }
+
+    #[cfg(windows)]
+    pub(crate) enum DestructiveEvent {
+        Timeout,
+        OutputLimit(OutputStream),
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn classify_termination(
+        event: DestructiveEvent,
+        verified: bool,
+    ) -> PrivateExecutionFailure {
+        if !verified {
+            return PrivateExecutionFailure::TerminationUnverified;
+        }
+        match event {
+            DestructiveEvent::Timeout => PrivateExecutionFailure::ProcessTimeout,
+            DestructiveEvent::OutputLimit(stream) => PrivateExecutionFailure::OutputLimit(stream),
+        }
+    }
+
+    fn terminate_and_verify(job: &JobObject, event: DestructiveEvent) -> PrivateExecutionFailure {
+        if job.terminate().is_err() {
+            return PrivateExecutionFailure::TerminationUnverified;
+        }
+        let verified = matches!(job.wait_for_quiescence(), Ok(true));
+        classify_termination(event, verified)
     }
 
     pub(super) fn qualify_private_execution(
         plan: ExecutionPlan,
         profile_name: &str,
+        mode: PrivateExecutionMode,
     ) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
-        let expected_executable = fixed_system_executable()
-            .map(|cmd| cmd.parent().map(|parent| parent.join("whoami.exe")))
-            .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.message))?
-            .ok_or_else(|| {
-                PrivateExecutionFailure::InvalidPlan("system directory is unavailable".into())
-            })?;
+        let expected_executable = match mode {
+            PrivateExecutionMode::Success => fixed_system_executable()
+                .map(|cmd| cmd.parent().map(|parent| parent.join("whoami.exe")))
+                .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.message))?
+                .ok_or_else(|| {
+                    PrivateExecutionFailure::InvalidPlan("system directory is unavailable".into())
+                })?,
+            PrivateExecutionMode::Timeout
+            | PrivateExecutionMode::StdoutLimit
+            | PrivateExecutionMode::StderrLimit => std::env::current_exe()
+                .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.to_string()))?,
+        };
         let expected_executable = std::fs::canonicalize(expected_executable)
             .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.to_string()))?;
-        if expected_executable != plan.executable || !plan.argv.is_empty() {
+        let expected_argv: Vec<String> = match mode {
+            PrivateExecutionMode::Success => Vec::new(),
+            PrivateExecutionMode::Timeout => vec![
+                "--exact".into(),
+                "contained_launch_tests::private_timeout_fixture_child".into(),
+                "--nocapture".into(),
+            ],
+            PrivateExecutionMode::StdoutLimit => vec![
+                "--exact".into(),
+                "contained_launch_tests::private_stdout_fixture_child".into(),
+                "--nocapture".into(),
+            ],
+            PrivateExecutionMode::StderrLimit => vec![
+                "--exact".into(),
+                "contained_launch_tests::private_stderr_fixture_child".into(),
+                "--nocapture".into(),
+            ],
+        };
+        if expected_executable != plan.executable || expected_argv != plan.argv {
             return Err(PrivateExecutionFailure::InvalidPlan(
-                "qualification executor accepts only whoami.exe with no arguments".into(),
+                "qualification executor received an executable or arguments outside the fixed provider-private fixture".into(),
             ));
         }
         let mut profile = AppContainerProfile::create(profile_name)
@@ -1760,33 +1859,96 @@ mod windows_contained_launch {
             Ok(child) => child,
             Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
         };
+        let mut descendant = if matches!(
+            mode,
+            PrivateExecutionMode::Timeout
+                | PrivateExecutionMode::StdoutLimit
+                | PrivateExecutionMode::StderrLimit
+        ) {
+            let descendant_argv = match mode {
+                PrivateExecutionMode::Timeout => vec![
+                    "--exact".to_owned(),
+                    "contained_launch_tests::private_timeout_descendant".to_owned(),
+                    "--nocapture".to_owned(),
+                ],
+                PrivateExecutionMode::StdoutLimit | PrivateExecutionMode::StderrLimit => vec![
+                    "--exact".to_owned(),
+                    "contained_launch_tests::private_output_descendant".to_owned(),
+                    "--nocapture".to_owned(),
+                ],
+                PrivateExecutionMode::Success => unreachable!(),
+            };
+            let mut descendant_plan = plan.clone();
+            descendant_plan.argv = descendant_argv;
+            Some(
+                match ChildProcess::create_suspended_with_pipes(
+                    profile.sid(),
+                    &descendant_plan,
+                    &stdout_write,
+                    &stderr_write,
+                ) {
+                    Ok(descendant) => descendant,
+                    Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
+                },
+            )
+        } else {
+            None
+        };
         drop(stdout_write);
         drop(stderr_write);
-        if let Err(error) = job.assign_before_resume(&child) {
+        if let Some(error) = job.assign_before_resume(&child).err() {
             child.terminate_best_effort();
             return Err(PrivateExecutionFailure::Provider(error.message));
+        }
+        if let Some(descendant_process) = descendant.as_mut() {
+            if let Err(error) = job.assign_before_resume(descendant_process) {
+                child.terminate_best_effort();
+                descendant_process.terminate_best_effort();
+                return Err(PrivateExecutionFailure::Provider(error.message));
+            }
         }
         if let Err(error) = child.verify_appcontainer_token() {
             child.terminate_best_effort();
             return Err(PrivateExecutionFailure::Provider(error.message));
         }
+        if let Some(descendant_process) = descendant.as_mut() {
+            if let Err(error) = descendant_process.verify_appcontainer_token() {
+                child.terminate_best_effort();
+                descendant_process.terminate_best_effort();
+                return Err(PrivateExecutionFailure::Provider(error.message));
+            }
+        }
         if let Err(error) = child.resume() {
             child.terminate_best_effort();
             return Err(PrivateExecutionFailure::Provider(error.message));
         }
+        if let Some(descendant_process) = descendant.as_mut() {
+            if let Err(error) = descendant_process.resume() {
+                child.terminate_best_effort();
+                descendant_process.terminate_best_effort();
+                return Err(PrivateExecutionFailure::Provider(error.message));
+            }
+        }
         let started = std::time::Instant::now();
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
-        let mut timed_out = false;
-        let mut output_limited = false;
+        let mut destructive_event = None;
         loop {
-            if read_pipe(&stdout_pipe, &mut stdout, plan.limits.stdout_bytes).is_err() {
-                output_limited = true;
+            match read_pipe(&stdout_pipe, &mut stdout, plan.limits.stdout_bytes) {
+                Ok(PipeRead::LimitExceeded) if destructive_event.is_none() => {
+                    destructive_event = Some(DestructiveEvent::OutputLimit(OutputStream::Stdout));
+                }
+                Ok(PipeRead::Open) | Ok(PipeRead::Closed) | Ok(PipeRead::LimitExceeded) => {}
+                Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
             }
-            if read_pipe(&stderr_pipe, &mut stderr, plan.limits.stderr_bytes).is_err() {
-                output_limited = true;
+            match read_pipe(&stderr_pipe, &mut stderr, plan.limits.stderr_bytes) {
+                Ok(PipeRead::LimitExceeded) if destructive_event.is_none() => {
+                    destructive_event = Some(DestructiveEvent::OutputLimit(OutputStream::Stderr));
+                }
+                Ok(PipeRead::Open) | Ok(PipeRead::Closed) | Ok(PipeRead::LimitExceeded) => {}
+                Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
             }
-            if output_limited {
+            if destructive_event.is_some() {
                 break;
             }
             let wait = unsafe { WaitForSingleObject(child.process.raw(), 0) };
@@ -1794,65 +1956,53 @@ mod windows_contained_launch {
                 break;
             }
             if started.elapsed() >= plan.limits.timeout {
-                timed_out = true;
+                destructive_event = Some(DestructiveEvent::Timeout);
                 break;
             }
             unsafe {
                 Sleep(10);
             }
         }
-        if timed_out || output_limited {
-            let _ = job.terminate();
-            let _ = child.wait_for_completion();
-            let quiescent = job.active_processes().unwrap_or(1) == 0;
-            if !quiescent {
-                return Err(PrivateExecutionFailure::TerminationUnverified);
-            }
-            let _ = profile.delete();
-            return Err(if timed_out {
-                PrivateExecutionFailure::ProcessTimeout
-            } else {
-                PrivateExecutionFailure::OutputLimit
-            });
+        if let Some(event) = destructive_event {
+            return Err(terminate_and_verify(&job, event));
         }
         let exit_code = child
             .wait_for_completion()
             .map_err(|e| PrivateExecutionFailure::Provider(e.message))?;
-        let mut drain_error = false;
+        let mut drain_event = None;
         loop {
             match read_pipe(&stdout_pipe, &mut stdout, plan.limits.stdout_bytes) {
-                Ok(true) => {}
-                Ok(false) => break,
-                Err(_) => {
-                    drain_error = true;
+                Ok(PipeRead::Closed) => break,
+                Ok(PipeRead::Open) => {}
+                Ok(PipeRead::LimitExceeded) => {
+                    drain_event = Some(OutputStream::Stdout);
                     break;
+                }
+                Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
+            }
+        }
+        if drain_event.is_none() {
+            loop {
+                match read_pipe(&stderr_pipe, &mut stderr, plan.limits.stderr_bytes) {
+                    Ok(PipeRead::Closed) => break,
+                    Ok(PipeRead::Open) => {}
+                    Ok(PipeRead::LimitExceeded) => {
+                        drain_event = Some(OutputStream::Stderr);
+                        break;
+                    }
+                    Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
                 }
             }
         }
-        loop {
-            match read_pipe(&stderr_pipe, &mut stderr, plan.limits.stderr_bytes) {
-                Ok(true) => {}
-                Ok(false) => break,
-                Err(_) => {
-                    drain_error = true;
-                    break;
-                }
-            }
-        }
-        if drain_error {
-            let _ = job.terminate();
-            let quiescent = job.active_processes().unwrap_or(1) == 0;
-            let _ = profile.delete();
-            return Err(if !quiescent {
-                PrivateExecutionFailure::TerminationUnverified
-            } else {
-                PrivateExecutionFailure::OutputLimit
-            });
+        if let Some(stream) = drain_event {
+            return Err(terminate_and_verify(
+                &job,
+                DestructiveEvent::OutputLimit(stream),
+            ));
         }
         let quiescent = job
-            .active_processes()
-            .map_err(|e| PrivateExecutionFailure::Provider(e.message))?
-            == 0;
+            .wait_for_quiescence()
+            .map_err(|_| PrivateExecutionFailure::TerminationUnverified)?;
         profile
             .delete()
             .map_err(|e| PrivateExecutionFailure::Provider(e.message))?;
@@ -2072,6 +2222,24 @@ mod contained_launch_tests {
         format!("{label}[{}]={text}", bytes.len())
     }
 
+    fn private_qualification_env() -> std::collections::BTreeMap<String, String> {
+        let mut env = std::collections::BTreeMap::new();
+        for key in [
+            "LOCALAPPDATA",
+            "SystemRoot",
+            "TEMP",
+            "TMP",
+            "PATH",
+            "ComSpec",
+        ] {
+            env.insert(
+                key.to_owned(),
+                std::env::var(key).expect("required qualification environment"),
+            );
+        }
+        env
+    }
+
     #[test]
     fn windows_private_qualification_executes_bounded_fixed_child_with_quiescent_job() {
         let suffix = SystemTime::now()
@@ -2085,18 +2253,7 @@ mod contained_launch_tests {
             .parent()
             .expect("system directory")
             .join("whoami.exe");
-        let mut env = std::collections::BTreeMap::new();
-        for key in [
-            "LOCALAPPDATA",
-            "SystemRoot",
-            "TEMP",
-            "TMP",
-            "PATH",
-            "ComSpec",
-        ] {
-            let value = std::env::var(key).expect("required qualification environment");
-            env.insert(key.to_owned(), value);
-        }
+        let env = private_qualification_env();
         let plan = build_execution_plan(
             &workspace,
             &executable,
@@ -2121,6 +2278,179 @@ mod contained_launch_tests {
         assert!(!result.stdout.is_empty());
         assert!(result.stderr.is_empty());
         let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    fn private_fixture_plan(
+        suffix: u128,
+        test_name: &str,
+        limits: ExecutionLimits,
+    ) -> (PathBuf, ExecutionPlan) {
+        let workspace = std::env::temp_dir().join(format!("Cotra.Private.Failure.{suffix}"));
+        std::fs::create_dir_all(&workspace).expect("qualification workspace");
+        let executable = std::env::current_exe().expect("fixture executable");
+        let plan = build_execution_plan(
+            &workspace,
+            &executable,
+            &[
+                "--exact".to_owned(),
+                test_name.to_owned(),
+                "--nocapture".to_owned(),
+            ],
+            ".",
+            &private_qualification_env(),
+            limits,
+        )
+        .expect("bounded private plan");
+        (workspace, plan)
+    }
+
+    #[test]
+    fn private_timeout_fixture_child() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    }
+
+    #[test]
+    fn private_timeout_descendant() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    }
+
+    #[test]
+    fn private_stdout_fixture_child() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            let mut stdout = std::io::stdout().lock();
+            use std::io::Write;
+            let _ = stdout.write_all(&vec![b'x'; 4096]);
+            let _ = stdout.flush();
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    }
+
+    #[test]
+    fn private_stderr_fixture_child() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            let mut stderr = std::io::stderr().lock();
+            use std::io::Write;
+            let _ = stderr.write_all(&vec![b'x'; 4096]);
+            let _ = stderr.flush();
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    }
+
+    #[test]
+    fn private_output_descendant() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    }
+
+    #[test]
+    fn windows_private_timeout_is_verified_and_typed() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let limits = ExecutionLimits {
+            timeout: Duration::from_secs(1),
+            stdout_bytes: 1024,
+            stderr_bytes: 1024,
+        };
+        let (workspace, plan) = private_fixture_plan(
+            suffix,
+            "contained_launch_tests::private_timeout_fixture_child",
+            limits,
+        );
+        let result = qualify_private_execution_mode(
+            plan,
+            &format!("Cotra.Private.Timeout.{suffix}"),
+            PrivateExecutionMode::Timeout,
+        );
+        assert_eq!(result, Err(PrivateExecutionFailure::ProcessTimeout));
+        let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn windows_private_stdout_limit_is_stream_typed_and_verified() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let limits = ExecutionLimits {
+            timeout: Duration::from_secs(5),
+            stdout_bytes: 1,
+            stderr_bytes: 1024,
+        };
+        let (workspace, plan) = private_fixture_plan(
+            suffix,
+            "contained_launch_tests::private_stdout_fixture_child",
+            limits,
+        );
+        let result = qualify_private_execution_mode(
+            plan,
+            &format!("Cotra.Private.Stdout.{suffix}"),
+            PrivateExecutionMode::StdoutLimit,
+        );
+        assert_eq!(
+            result,
+            Err(PrivateExecutionFailure::OutputLimit(OutputStream::Stdout))
+        );
+        let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn windows_private_stderr_limit_is_stream_typed_and_verified() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let limits = ExecutionLimits {
+            timeout: Duration::from_secs(5),
+            stdout_bytes: 1024,
+            stderr_bytes: 1,
+        };
+        let (workspace, plan) = private_fixture_plan(
+            suffix,
+            "contained_launch_tests::private_stderr_fixture_child",
+            limits,
+        );
+        let result = qualify_private_execution_mode(
+            plan,
+            &format!("Cotra.Private.Stderr.{suffix}"),
+            PrivateExecutionMode::StderrLimit,
+        );
+        assert_eq!(
+            result,
+            Err(PrivateExecutionFailure::OutputLimit(OutputStream::Stderr))
+        );
+        let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn windows_private_unverified_termination_never_promotes_timeout_or_output_limit() {
+        assert_eq!(
+            windows_contained_launch::classify_termination(
+                windows_contained_launch::DestructiveEvent::Timeout,
+                false,
+            ),
+            PrivateExecutionFailure::TerminationUnverified
+        );
+        assert_eq!(
+            windows_contained_launch::classify_termination(
+                windows_contained_launch::DestructiveEvent::OutputLimit(OutputStream::Stdout),
+                false,
+            ),
+            PrivateExecutionFailure::TerminationUnverified
+        );
+        assert_eq!(
+            windows_contained_launch::classify_termination(
+                windows_contained_launch::DestructiveEvent::OutputLimit(OutputStream::Stderr),
+                false,
+            ),
+            PrivateExecutionFailure::TerminationUnverified
+        );
     }
 
     #[test]
