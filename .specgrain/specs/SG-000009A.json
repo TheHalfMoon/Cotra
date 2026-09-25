@@ -2,10 +2,16 @@
   "id": "SG-000009A",
   "title": "Destructive timeout and output-limit termination qualification",
   "program": "COTRA-P05",
-  "state": "GRAIN",
+  "state": "PROVEN",
   "risk": "high",
   "created": "2026-09-24",
   "base": "617b06ca234298f5cca184d66c04df5ce1b1b4cc",
+  "qualified_head": "8e43a8404d08da6932922caa2a956dee54df4072",
+  "implementation_base": "b350932c4226fc5250a2d234c1927149f7c49064",
+  "implementation_merge": "f405b7f0fcbc949d5f9ddf868e8e5029b1024310",
+  "pre_merge_ci": "36034565643",
+  "pre_merge_review_gates": "36034562275",
+  "post_merge_ci": "36196698333",
   "dependencies": [
     "SG-000005",
     "SG-000006",
@@ -95,5 +101,17 @@
     "security_review": true,
     "exact_head_ci": true
   },
-  "done_when": "Timeout and output-limit destructive paths are merged with exact-head and post-merge verification, or a genuine Windows limitation is documented without weakening typed failure semantics."
+  "done_when": "Timeout and output-limit destructive paths are merged with exact-head and post-merge verification, or a genuine Windows limitation is documented without weakening typed failure semantics.",
+  "canonical_evidence": {
+    "merge_sha": "f405b7f0fcbc949d5f9ddf868e8e5029b1024310",
+    "qualified_head": "8e43a8404d08da6932922caa2a956dee54df4072",
+    "implementation_base": "b350932c4226fc5250a2d234c1927149f7c49064",
+    "pre_merge_ci": "36034565643",
+    "pre_merge_review_gates": "36034562275",
+    "post_merge_ci": "36196698333",
+    "native_windows": "SUCCESS",
+    "jev": "PASSED: 15/15 hunks, zero findings, zero blocking findings",
+    "ocr": "PASSED: exact-range delegation, 3 files, 1 reviewable, 2 excluded unsupported_ext",
+    "deferred": "No external process.spawn authority exposed."
+  }
 }
