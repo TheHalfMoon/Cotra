@@ -1,14 +1,16 @@
 # Cotra Current Canonical Frontier
 
 Status: IMPLEMENTATION
-Date: 2026-09-24
-Canonical main: b350932c4226fc5250a2d234c1927149f7c49064
+Date: 2026-09-25
+Canonical main: f405b7f0fcbc949d5f9ddf868e8e5029b1024310
 
 SG-000009 closeout merge (historical): 617b06ca234298f5cca184d66c04df5ce1b1b4cc
 
-The canonical main line above records the current repository head after SG-000009A governance activation. It is intentionally distinct from the historical SG-000009 closeout merge above.
+SG-000009A implementation merge: f405b7f0fcbc949d5f9ddf868e8e5029b1024310
+SG-000009A qualified head: 8e43a8404d08da6932922caa2a956dee54df4072
+SG-000009A implementation base: b350932c4226fc5250a2d234c1927149f7c49064
 
-SG-000001 through SG-000009 are COMPLETE_CANONICAL.
+SG-000001 through SG-000009A are COMPLETE_CANONICAL.
 
 SG-000009:
 - qualified head ca17e5b5f8145dfb01ad0ad6102587ef7f80ed76
@@ -19,6 +21,14 @@ SG-000009:
 - post-merge CI 36029004410 - SUCCESS
 - SG-000009 closeout post-merge CI 36029741014 - SUCCESS
 - native Windows fixed no-argument whoami.exe AppContainer qualification proven
+
+SG-000009A:
+- qualified head 8e43a8404d08da6932922caa2a956dee54df4072
+- implementation merge f405b7f0fcbc949d5f9ddf868e8e5029b1024310
+- pre-merge CI 36034565643 - SUCCESS
+- Review Gates 36034562275 - SUCCESS; Jev 15/15 hunks, zero findings; OCR exact-range delegation PASSED
+- post-merge CI 36196698333 - SUCCESS
+- native Windows destructive timeout, stdout-limit, stderr-limit, and TerminationUnverified qualification proven; SG-000009 regression retained
 
 Canonical capabilities:
 - system.status
@@ -31,22 +41,23 @@ Canonical capabilities:
 - native Windows AppContainer profile primitive qualified
 - native Windows Job Object kill-on-close primitive qualified
 - native Windows contained fixed-child launch qualification
+- native Windows destructive timeout/output-limit termination with verified Job quiescence (provider-private; no process.spawn)
 
 Live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
 
 Active grain:
-SG-000009A - Destructive timeout and output-limit termination qualification
+SG-000009A closeout - reconcile CURRENT with actual Git history and record post-merge evidence
 
 Branch:
-feat/sg-000009a-implementation
+chore/sg-000009a-closeout
 
-SG-000009A must prove:
+SG-000009A is proven on merged main:
 - fixed provider-private timeout and output-limit child modes
 - Job termination with verified zero active processes
-- typed ProcessTimeout, OutputLimit, and TerminationUnverified evidence
+- typed ProcessTimeout, stream-typed OutputLimit, and TerminationUnverified evidence
 - no expansion of process.spawn, PowerShell, arbitrary executable, network, ACL, browser/UI, elevation, or approval authority
 
-SG-000009 remains canonical for the fixed private no-argument child success path. Destructive timeout/output-limit descendant-tree runtime qualification is the next lawful P05 unit.
+SG-000009 remains canonical for the fixed private no-argument child success path. SG-000009A is now canonical for destructive timeout/output-limit descendant-tree runtime qualification.
 
 Still denied / absent:
 - process.spawn MCP authority
