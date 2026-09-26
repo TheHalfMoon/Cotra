@@ -369,8 +369,8 @@ fn process_spawn(
         action: "execute argv process".into(),
         target: plan.executable.display().to_string(),
         summary: format!(
-            "argv={} cwd={} timeout={}ms stdout_limit={} stderr_limit={} stdin=null network=NONE",
-            plan.argv.len(),
+            "argv={:?} cwd={} timeout={}ms stdout_limit={} stderr_limit={} stdin=null network=NONE",
+            plan.argv,
             plan.cwd.display(),
             plan.limits.timeout.as_millis(),
             plan.limits.stdout_bytes,
@@ -551,7 +551,9 @@ fn content(request: &RequestEnvelope) -> Result<&str, ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cotra_approval::{test_support::FixedApprovalBroker, ApprovalError, ApprovalPrompt};
+    use cotra_approval::{ApprovalError, ApprovalPrompt};
+    #[cfg(windows)]
+    use cotra_approval::test_support::FixedApprovalBroker;
     use serde_json::json;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -654,6 +656,12 @@ mod tests {
             root: fs::canonicalize(&root).expect("canonical workspace"),
         };
         let policy = PolicyEngine::new(vec![workspace.clone()]).expect("policy");
+        #[cfg(windows)]
+        let executable = {
+            let system_root = std::env::var_os("SystemRoot").expect("SystemRoot");
+            PathBuf::from(system_root).join("System32").join("whoami.exe")
+        };
+        #[cfg(not(windows))]
         let executable = std::env::current_exe().expect("test executable");
         let request = process_request(&workspace, executable);
         policy
