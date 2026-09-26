@@ -1,0 +1,103 @@
+{
+  "id": "SG-000011",
+  "title": "Descendant-aware post-exit lifecycle hardening",
+  "program": "COTRA-P05",
+  "state": "GRAIN",
+  "risk": "high",
+  "created": "2026-09-26",
+  "base": "f743ca8923756b7d89f009a9994286a27c80245f",
+  "dependencies": [
+    "SG-000009A",
+    "SG-000010"
+  ],
+  "objective": "Harden and qualify the contained Windows executor when the primary child exits while a descendant retains inherited stdout/stderr handles, so post-primary-exit output draining remains bounded, descendant lifecycle is resolved through the Job, and no success result is returned until Job/process-tree quiescence is verified. This grain adds no new public executable authority.",
+  "scope": {
+    "include": [
+      "provider-private deterministic descendant-producing Windows qualification fixture",
+      "bounded post-primary-exit stdout/stderr drain deadline",
+      "Job active-process accounting after primary-process exit",
+      "Job termination when descendants keep the process tree or inherited pipe handles alive past the bounded drain window",
+      "verified zero active Job processes before final success or destructive classification",
+      "fail-closed TerminationUnverified when descendant termination or quiescence cannot be proven",
+      "race-safe completion precedence between primary exit, pipe EOF, output-limit events, timeout, and descendant quiescence",
+      "native Windows qualification",
+      "SG-000009, SG-000009A, and SG-000010 regression coverage"
+    ],
+    "exclude": [
+      "generic executable-registry widening",
+      "additional public process.spawn executable targets",
+      "raw command strings",
+      "cmd.exe or shell authority",
+      "powershell.run",
+      "direct PowerShell executable authority",
+      "caller-provided environment overrides",
+      "stdin payload injection",
+      "process network capability",
+      "background or detached public execution",
+      "public process.kill_tree capability",
+      "Git mutation",
+      "browser or UI automation",
+      "elevation",
+      "approval bypass or persistent approval reuse"
+    ]
+  },
+  "authority_delta": {
+    "filesystem": "None",
+    "process": "No new public process authority; provider-private lifecycle hardening and deterministic native qualification only",
+    "network": "None",
+    "browser": "None",
+    "ui_input": "None",
+    "secrets": "None; existing sanitized child environment boundary is retained",
+    "approval": "No change",
+    "privileged": "None"
+  },
+  "invariants": [
+    "SG-000010 public Windows process.spawn remains restricted to the exact qualified System32 whoami.exe target",
+    "Primary-process exit alone is not sufficient evidence of process-tree completion",
+    "A descendant retaining stdout or stderr cannot cause an unbounded reader join or unbounded successful request",
+    "Post-primary-exit draining is bounded by an explicit internal deadline",
+    "If descendant processes remain active after the bounded drain window, the Job is terminated and zero active processes must be verified",
+    "A success result is returned only when the primary exit is known, required output readers have reached a bounded terminal state, and Job active-process count is zero",
+    "Failure to prove descendant termination or Job quiescence returns TerminationUnverified and never success",
+    "Output-limit and timeout semantics remain fail-closed and do not get downgraded by a concurrent primary exit",
+    "No additional executable, shell, PowerShell, network, background, public kill, browser/UI, elevation, or approval authority is introduced"
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "claim": "A native Windows provider-private fixture whose primary process exits while a descendant retains stdout/stderr handles completes within a deterministic bound and cannot hang the executor."
+    },
+    {
+      "id": "A2",
+      "claim": "When a descendant remains active beyond the bounded post-primary-exit drain window, Cotra terminates the Job and verifies zero active Job processes before returning the final typed result."
+    },
+    {
+      "id": "A3",
+      "claim": "If descendant termination or zero-active-process verification cannot be proven, the executor returns TerminationUnverified and never success, ProcessTimeout, or OutputLimit as a stronger claim than the evidence permits."
+    },
+    {
+      "id": "A4",
+      "claim": "Race-focused tests establish deterministic precedence across primary exit, stdout/stderr EOF, output-limit events, timeout, Job termination, and quiescence verification without unbounded joins or sleeps as the synchronization contract."
+    },
+    {
+      "id": "A5",
+      "claim": "The fixed descendant fixture remains AppContainer-contained, is assigned to the kill-on-close Job before resume, uses only the existing three inherited standard handles and sanitized environment, and has network_class=NONE."
+    },
+    {
+      "id": "A6",
+      "claim": "SG-000009, SG-000009A, and SG-000010 native Windows success/timeout/output-limit/TerminationUnverified/public-whoami regressions remain green, and no new public executable target is authorized."
+    },
+    {
+      "id": "A7",
+      "claim": "Exact-head Windows/Ubuntu Rust, Node, Governance, genuine TypeSafe Jev, Alibaba Open Code Review, and security review gates pass with zero unresolved blocking findings."
+    }
+  ],
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": "where integrated",
+    "security_review": true,
+    "exact_head_ci": true
+  },
+  "done_when": "Descendant-retained-stdio post-primary-exit behavior is bounded and natively qualified, Job/process-tree quiescence is verified before success, uncertainty fails closed as TerminationUnverified, existing public process.spawn authority does not widen, and the implementation is merged with post-merge verification."
+}
