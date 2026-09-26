@@ -66,7 +66,7 @@ fn platform_prompt(prompt: &ApprovalPrompt) -> Result<ApprovalDecision, Approval
     }
 
     let body = format!(
-        "Cotra requests a local file change.\n\nWorkspace: {}\nAction: {}\nTarget: {}\n{}\nDigest: {}\n\nApprove this exact operation?",
+        "Cotra requests a local action.\n\nWorkspace: {}\nAction: {}\nTarget: {}\n{}\nDigest: {}\n\nApprove this exact operation?",
         prompt.workspace_id, prompt.action, prompt.target, prompt.summary, prompt.digest
     );
     let body = wide(&body);
@@ -92,11 +92,11 @@ fn platform_prompt(prompt: &ApprovalPrompt) -> Result<ApprovalDecision, Approval
 #[cfg(not(windows))]
 fn platform_prompt(_prompt: &ApprovalPrompt) -> Result<ApprovalDecision, ApprovalError> {
     Err(ApprovalError::unavailable(
-        "local approval UI is Windows-only in SG-000002",
+        "local approval UI is Windows-only in the current Cotra runtime",
     ))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod test_support {
     use super::*;
 

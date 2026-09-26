@@ -1,8 +1,16 @@
 use cotra_contracts::{FailureCode, RequestEnvelope};
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
-pub const POLICY_REVISION: &str = "sg-000003-v1";
+pub const POLICY_REVISION: &str = "sg-000010-v1";
+
+const MAX_PROCESS_ARGV_ITEMS: usize = 64;
+const MAX_PROCESS_ARG_UTF16: usize = 8_192;
+const MAX_PROCESS_COMMAND_UTF16: usize = 30_000;
+const MAX_PROCESS_TIMEOUT_MS: u64 = 30 * 60 * 1_000;
+const MAX_PROCESS_STDOUT_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_PROCESS_STDERR_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -111,13 +119,14 @@ impl PolicyEngine {
                 | ("git.status", "status")
                 | ("git.diff", "diff")
                 | ("git.log", "log")
+                | ("process.spawn", "spawn")
         );
 
         if !allowed {
             return Err(PolicyError::new(
                 FailureCode::CapabilityDenied,
                 format!(
-                    "capability/operation is not allowed in SG-000003: {}/{}",
+                    "capability/operation is not allowed by {POLICY_REVISION}: {}/{}",
                     request.capability, request.operation
                 ),
             ));
@@ -137,7 +146,7 @@ impl PolicyEngine {
             let content = request
                 .arguments
                 .get("content")
-                .and_then(serde_json::Value::as_str)
+                .and_then(Value::as_str)
                 .ok_or_else(|| {
                     PolicyError::new(
                         FailureCode::InvalidRequest,
@@ -152,11 +161,236 @@ impl PolicyEngine {
             }
         }
 
+        if request.capability == "process.spawn" {
+            validate_process_spawn(request)?;
+        }
+
         Ok(PolicyDecision {
             workspace: workspace.clone(),
             policy_revision: POLICY_REVISION,
         })
     }
+}
+
+fn validate_process_spawn(request: &RequestEnvelope) -> Result<(), PolicyError> {
+    if request.target.is_some() {
+        return Err(PolicyError::new(
+            FailureCode::InvalidRequest,
+            "process.spawn does not accept a target field",
+        ));
+    }
+
+    let arguments = request.arguments.as_object().ok_or_else(|| {
+        PolicyError::new(
+            FailureCode::InvalidRequest,
+            "process.spawn arguments must be an object",
+        )
+    })?;
+    reject_unknown_process_arguments(arguments)?;
+
+    let executable = required_string(arguments, "executable")?;
+    validate_process_executable(executable)?;
+
+    let argv = arguments
+        .get("argv")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            PolicyError::new(
+                FailureCode::InvalidRequest,
+                "process.spawn requires arguments.argv as an array",
+            )
+        })?;
+    if argv.len() > MAX_PROCESS_ARGV_ITEMS {
+        return Err(PolicyError::new(
+            FailureCode::InvalidRequest,
+            format!("process.spawn argv exceeds {MAX_PROCESS_ARGV_ITEMS} items"),
+        ));
+    }
+
+    let mut command_utf16 = executable.encode_utf16().count() + 3;
+    for value in argv {
+        let argument = value.as_str().ok_or_else(|| {
+            PolicyError::new(
+                FailureCode::InvalidRequest,
+                "process.spawn argv entries must be strings",
+            )
+        })?;
+        if argument.contains('\0') {
+            return Err(PolicyError::new(
+                FailureCode::InvalidRequest,
+                "process.spawn argv contains a NUL byte",
+            ));
+        }
+        let length = argument.encode_utf16().count();
+        if length > MAX_PROCESS_ARG_UTF16 {
+            return Err(PolicyError::new(
+                FailureCode::InvalidRequest,
+                "process.spawn argv entry is too large",
+            ));
+        }
+        command_utf16 = command_utf16.saturating_add(length + 3);
+    }
+    if command_utf16 > MAX_PROCESS_COMMAND_UTF16 {
+        return Err(PolicyError::new(
+            FailureCode::InvalidRequest,
+            "process.spawn command line exceeds the bounded UTF-16 limit",
+        ));
+    }
+
+    let cwd = required_string(arguments, "cwd")?;
+    if cwd.is_empty() {
+        return Err(PolicyError::new(
+            FailureCode::InvalidRequest,
+            "process.spawn cwd cannot be empty",
+        ));
+    }
+    validate_relative_target(cwd)?;
+
+    bounded_u64(arguments, "timeout_ms", 1_000, MAX_PROCESS_TIMEOUT_MS)?;
+    bounded_u64(arguments, "stdout_bytes", 1, MAX_PROCESS_STDOUT_BYTES)?;
+    bounded_u64(arguments, "stderr_bytes", 1, MAX_PROCESS_STDERR_BYTES)?;
+
+    if required_string(arguments, "stdin_policy")? != "null" {
+        return Err(PolicyError::new(
+            FailureCode::InvalidRequest,
+            "process.spawn stdin_policy must be null",
+        ));
+    }
+    if required_string(arguments, "network_class")? != "NONE" {
+        return Err(PolicyError::new(
+            FailureCode::CapabilityDenied,
+            "process.spawn network_class must be NONE",
+        ));
+    }
+
+    Ok(())
+}
+
+fn reject_unknown_process_arguments(arguments: &Map<String, Value>) -> Result<(), PolicyError> {
+    const ALLOWED: &[&str] = &[
+        "executable",
+        "argv",
+        "cwd",
+        "timeout_ms",
+        "stdout_bytes",
+        "stderr_bytes",
+        "stdin_policy",
+        "network_class",
+    ];
+    if let Some(key) = arguments
+        .keys()
+        .find(|key| !ALLOWED.contains(&key.as_str()))
+    {
+        return Err(PolicyError::new(
+            FailureCode::InvalidRequest,
+            format!("process.spawn does not accept argument field: {key}"),
+        ));
+    }
+    Ok(())
+}
+
+fn required_string<'a>(
+    arguments: &'a Map<String, Value>,
+    key: &str,
+) -> Result<&'a str, PolicyError> {
+    arguments.get(key).and_then(Value::as_str).ok_or_else(|| {
+        PolicyError::new(
+            FailureCode::InvalidRequest,
+            format!("process.spawn requires arguments.{key} as a string"),
+        )
+    })
+}
+
+fn bounded_u64(
+    arguments: &Map<String, Value>,
+    key: &str,
+    minimum: u64,
+    maximum: u64,
+) -> Result<u64, PolicyError> {
+    let value = arguments.get(key).and_then(Value::as_u64).ok_or_else(|| {
+        PolicyError::new(
+            FailureCode::InvalidRequest,
+            format!("process.spawn requires arguments.{key} as an unsigned integer"),
+        )
+    })?;
+    if !(minimum..=maximum).contains(&value) {
+        return Err(PolicyError::new(
+            FailureCode::InvalidRequest,
+            format!("process.spawn {key} must be between {minimum} and {maximum}"),
+        ));
+    }
+    Ok(value)
+}
+
+fn validate_process_executable(executable: &str) -> Result<(), PolicyError> {
+    if executable.is_empty() || executable.contains('\0') {
+        return Err(PolicyError::new(
+            FailureCode::InvalidRequest,
+            "process.spawn executable must be a non-empty absolute path without NUL bytes",
+        ));
+    }
+
+    let portable = executable.replace('/', "\\");
+    if portable.starts_with("\\\\") {
+        return Err(PolicyError::new(
+            FailureCode::CapabilityDenied,
+            "process.spawn executable cannot use UNC or device namespaces",
+        ));
+    }
+
+    let bytes = executable.as_bytes();
+    let windows_absolute = bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'\\' | b'/');
+    if !windows_absolute && !Path::new(executable).is_absolute() {
+        return Err(PolicyError::new(
+            FailureCode::InvalidRequest,
+            "process.spawn executable must be an absolute local path",
+        ));
+    }
+
+    enforce_sg000010_executable_policy(executable)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn enforce_sg000010_executable_policy(executable: &str) -> Result<(), PolicyError> {
+    let requested = std::fs::canonicalize(executable).map_err(|error| {
+        PolicyError::new(
+            FailureCode::InvalidRequest,
+            format!("process.spawn executable could not be resolved: {error}"),
+        )
+    })?;
+    let system_root = std::env::var_os("SystemRoot").ok_or_else(|| {
+        PolicyError::new(
+            FailureCode::ProviderUnavailable,
+            "SystemRoot is unavailable for SG-000010 executable policy",
+        )
+    })?;
+    let allowed = std::fs::canonicalize(
+        PathBuf::from(system_root)
+            .join("System32")
+            .join("whoami.exe"),
+    )
+    .map_err(|error| {
+        PolicyError::new(
+            FailureCode::ProviderUnavailable,
+            format!("SG-000010 whoami.exe fixture could not be resolved: {error}"),
+        )
+    })?;
+    if requested != allowed {
+        return Err(PolicyError::new(
+            FailureCode::CapabilityDenied,
+            "SG-000010 process.spawn permits only the qualified Windows whoami.exe executable; executable registry widening is a successor authority grain",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn enforce_sg000010_executable_policy(_executable: &str) -> Result<(), PolicyError> {
+    Ok(())
 }
 
 pub fn validate_relative_target(target: &str) -> Result<(), PolicyError> {
@@ -232,16 +466,52 @@ mod tests {
         }
     }
 
+    fn process_request(executable: &Path) -> RequestEnvelope {
+        RequestEnvelope {
+            version: 1,
+            request_id: "process-r1".into(),
+            client_session_id: "s1".into(),
+            workspace_id: "default".into(),
+            capability: "process.spawn".into(),
+            operation: "spawn".into(),
+            target: None,
+            arguments: json!({
+                "executable": executable.to_string_lossy(),
+                "argv": ["--version"],
+                "cwd": ".",
+                "timeout_ms": 30_000,
+                "stdout_bytes": 2 * 1024 * 1024,
+                "stderr_bytes": 256 * 1024,
+                "stdin_policy": "null",
+                "network_class": "NONE"
+            }),
+        }
+    }
+
+    #[cfg(windows)]
+    fn process_fixture_executable() -> PathBuf {
+        PathBuf::from(std::env::var_os("SystemRoot").expect("SystemRoot"))
+            .join("System32")
+            .join("whoami.exe")
+    }
+
+    #[cfg(not(windows))]
+    fn process_fixture_executable() -> PathBuf {
+        std::env::current_exe().expect("current executable")
+    }
+
+    fn engine(root: &Path) -> PolicyEngine {
+        PolicyEngine::new(vec![Workspace {
+            id: "default".into(),
+            root: root.to_path_buf(),
+        }])
+        .expect("policy")
+    }
+
     #[test]
     fn rejects_parent_escape() {
         let root = temp_root();
-        let engine = PolicyEngine::new(vec![Workspace {
-            id: "default".into(),
-            root: root.clone(),
-        }])
-        .expect("policy");
-
-        let error = engine
+        let error = engine(&root)
             .authorize(&request("../outside.txt"))
             .expect_err("escape must fail");
         assert_eq!(error.code, FailureCode::PathEscape);
@@ -260,15 +530,10 @@ mod tests {
     #[test]
     fn denies_unknown_capability() {
         let root = temp_root();
-        let engine = PolicyEngine::new(vec![Workspace {
-            id: "default".into(),
-            root: root.clone(),
-        }])
-        .expect("policy");
         let mut req = request("file.txt");
-        req.capability = "process.spawn".into();
-        req.operation = "spawn".into();
-        let error = engine.authorize(&req).expect_err("must be denied");
+        req.capability = "process.kill".into();
+        req.operation = "kill".into();
+        let error = engine(&root).authorize(&req).expect_err("must be denied");
         assert_eq!(error.code, FailureCode::CapabilityDenied);
         let _ = std::fs::remove_dir_all(root);
     }
@@ -276,18 +541,130 @@ mod tests {
     #[test]
     fn write_requires_content() {
         let root = temp_root();
-        let engine = PolicyEngine::new(vec![Workspace {
-            id: "default".into(),
-            root: root.clone(),
-        }])
-        .expect("policy");
         let mut req = request("file.txt");
         req.capability = "fs.write".into();
         req.operation = "write".into();
-        let error = engine
+        let error = engine(&root)
             .authorize(&req)
             .expect_err("missing content must fail");
         assert_eq!(error.code, FailureCode::InvalidRequest);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn authorizes_only_bounded_argv_process_spawn() {
+        let root = temp_root();
+        let executable = process_fixture_executable();
+        let req = process_request(&executable);
+        engine(&root)
+            .authorize(&req)
+            .expect("bounded process.spawn");
+
+        let mut wrong_operation = req.clone();
+        wrong_operation.operation = "run".into();
+        assert_eq!(
+            engine(&root).authorize(&wrong_operation).unwrap_err().code,
+            FailureCode::CapabilityDenied
+        );
+
+        let mut powershell = req.clone();
+        powershell.capability = "powershell.run".into();
+        powershell.operation = "run".into();
+        assert_eq!(
+            engine(&root).authorize(&powershell).unwrap_err().code,
+            FailureCode::CapabilityDenied
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn process_spawn_rejects_escape_shell_network_stdin_env_and_unbounded_inputs() {
+        let root = temp_root();
+        let executable = process_fixture_executable();
+        let base = process_request(&executable);
+
+        let mut relative_executable = base.clone();
+        relative_executable.arguments["executable"] = json!("tool.exe");
+        assert_eq!(
+            engine(&root)
+                .authorize(&relative_executable)
+                .unwrap_err()
+                .code,
+            FailureCode::InvalidRequest
+        );
+
+        let mut cwd_escape = base.clone();
+        cwd_escape.arguments["cwd"] = json!("..");
+        assert_eq!(
+            engine(&root).authorize(&cwd_escape).unwrap_err().code,
+            FailureCode::PathEscape
+        );
+
+        let mut nul_argv = base.clone();
+        nul_argv.arguments["argv"] = json!(["bad\0arg"]);
+        assert_eq!(
+            engine(&root).authorize(&nul_argv).unwrap_err().code,
+            FailureCode::InvalidRequest
+        );
+
+        let mut network = base.clone();
+        network.arguments["network_class"] = json!("DIRECT_DESTINATION");
+        assert_eq!(
+            engine(&root).authorize(&network).unwrap_err().code,
+            FailureCode::CapabilityDenied
+        );
+
+        let mut stdin = base.clone();
+        stdin.arguments["stdin_policy"] = json!("text");
+        assert_eq!(
+            engine(&root).authorize(&stdin).unwrap_err().code,
+            FailureCode::InvalidRequest
+        );
+
+        let mut env = base.clone();
+        env.arguments["env"] = json!({"PATH": "caller"});
+        assert_eq!(
+            engine(&root).authorize(&env).unwrap_err().code,
+            FailureCode::InvalidRequest
+        );
+
+        let mut raw_command = base.clone();
+        raw_command.arguments["command"] = json!("cmd /c whoami");
+        assert_eq!(
+            engine(&root).authorize(&raw_command).unwrap_err().code,
+            FailureCode::InvalidRequest
+        );
+
+        let mut timeout = base.clone();
+        timeout.arguments["timeout_ms"] = json!(MAX_PROCESS_TIMEOUT_MS + 1);
+        assert_eq!(
+            engine(&root).authorize(&timeout).unwrap_err().code,
+            FailureCode::InvalidRequest
+        );
+
+        let mut stdout = base.clone();
+        stdout.arguments["stdout_bytes"] = json!(MAX_PROCESS_STDOUT_BYTES + 1);
+        assert_eq!(
+            engine(&root).authorize(&stdout).unwrap_err().code,
+            FailureCode::InvalidRequest
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn process_spawn_rejects_unqualified_shell_and_powershell_executables() {
+        let root = temp_root();
+        let system32 =
+            PathBuf::from(std::env::var_os("SystemRoot").expect("SystemRoot")).join("System32");
+        for name in ["cmd.exe", "WindowsPowerShell\\v1.0\\powershell.exe"] {
+            let request = process_request(&system32.join(name));
+            let error = engine(&root)
+                .authorize(&request)
+                .expect_err("SG-000010 must not expose shell/interpreter authority");
+            assert_eq!(error.code, FailureCode::CapabilityDenied);
+        }
         let _ = std::fs::remove_dir_all(root);
     }
 }

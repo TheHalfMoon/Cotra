@@ -725,10 +725,29 @@ pub enum OutputStream {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PrivateExecutionMode {
+    Public,
     Success,
     Timeout,
     StdoutLimit,
     StderrLimit,
+}
+
+#[cfg(windows)]
+pub fn execute_contained(
+    plan: ExecutionPlan,
+    profile_name: &str,
+) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
+    qualify_private_execution_mode(plan, profile_name, PrivateExecutionMode::Public)
+}
+
+#[cfg(not(windows))]
+pub fn execute_contained(
+    _plan: ExecutionPlan,
+    _profile_name: &str,
+) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
+    Err(PrivateExecutionFailure::Provider(
+        "contained execution is available only on Windows".into(),
+    ))
 }
 
 #[cfg(windows)]
@@ -760,17 +779,6 @@ pub fn qualify_private_execution(
 
 #[cfg(windows)]
 mod windows_contained_launch {
-    // SAFETY MODEL:
-    // - All FFI declarations mirror documented Win32 ABI signatures and use repr(C) structs.
-    // - OwnedHandle and AppContainerProfile are the sole owners of returned handles/SIDs and
-    //   release them exactly once through Drop or an explicit successful delete.
-    // - UTF-16 pointers passed to Win32 APIs are backed by live Vec<u16> values for the full call.
-    // - STARTUPINFOEX and PROCESS_INFORMATION are zero-initialized POD Win32 records whose cb
-    //   and attribute-list fields are populated before CreateProcessW.
-    // - The PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES payload and attribute-list allocation
-    //   outlive CreateProcessW; no pointer is retained by Cotra after that call returns.
-    // - Child and Job handles remain valid for every token/job/process operation that uses them.
-    // Individual unsafe blocks below are kept narrow and rely on these invariants.
     use super::{
         allowed_execution_env, validate_appcontainer_name, ContainedLaunchProbe, ExecutionPlan,
         ExecutionPlanError, OutputStream, PrivateExecutionFailure, PrivateExecutionMode,
@@ -1446,7 +1454,7 @@ mod windows_contained_launch {
                 )
             };
             if created == 0 {
-                return Err(last_error("CreateProcessW(private qualification)"));
+                return Err(last_error("CreateProcessW(contained execution)"));
             }
             let process = OwnedHandle::new(information.process, "CreateProcessW process")?;
             let thread = OwnedHandle::new(information.thread, "CreateProcessW thread")?;
@@ -1806,6 +1814,7 @@ mod windows_contained_launch {
         mode: PrivateExecutionMode,
     ) -> Result<PrivateExecutionResult, PrivateExecutionFailure> {
         let expected_executable = match mode {
+            PrivateExecutionMode::Public => plan.executable.clone(),
             PrivateExecutionMode::Success => fixed_system_executable()
                 .map(|cmd| cmd.parent().map(|parent| parent.join("whoami.exe")))
                 .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.message))?
@@ -1820,6 +1829,7 @@ mod windows_contained_launch {
         let expected_executable = std::fs::canonicalize(expected_executable)
             .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.to_string()))?;
         let expected_argv: Vec<String> = match mode {
+            PrivateExecutionMode::Public => plan.argv.clone(),
             PrivateExecutionMode::Success => Vec::new(),
             PrivateExecutionMode::Timeout => vec![
                 "--exact".into(),
@@ -1839,7 +1849,7 @@ mod windows_contained_launch {
         };
         if expected_executable != plan.executable || expected_argv != plan.argv {
             return Err(PrivateExecutionFailure::InvalidPlan(
-                "qualification executor received an executable or arguments outside the fixed provider-private fixture".into(),
+                "contained executor received an executable or arguments outside the normalized plan".into(),
             ));
         }
         let mut profile = AppContainerProfile::create(profile_name)
@@ -1876,7 +1886,7 @@ mod windows_contained_launch {
                     "contained_launch_tests::private_output_descendant".to_owned(),
                     "--nocapture".to_owned(),
                 ],
-                PrivateExecutionMode::Success => unreachable!(),
+                PrivateExecutionMode::Public | PrivateExecutionMode::Success => unreachable!(),
             };
             let mut descendant_plan = plan.clone();
             descendant_plan.argv = descendant_argv;
@@ -2164,7 +2174,6 @@ mod contained_launch_tests {
     impl EnvironmentVarGuard {
         fn replace(key: &'static str, value: &str) -> Self {
             let original = std::env::var_os(key);
-            // SAFETY: The caller holds ENVIRONMENT_LOCK for the guard's lifetime.
             unsafe {
                 std::env::set_var(key, value);
             }
@@ -2174,7 +2183,6 @@ mod contained_launch_tests {
 
     impl Drop for EnvironmentVarGuard {
         fn drop(&mut self) {
-            // SAFETY: The guard holds ENVIRONMENT_LOCK until this destructor completes.
             unsafe {
                 match &self.original {
                     Some(value) => std::env::set_var(self.key, value),

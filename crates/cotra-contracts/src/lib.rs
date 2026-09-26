@@ -30,6 +30,8 @@ pub enum FailureCode {
     ApprovalUnavailable,
     TargetStale,
     ProviderUnavailable,
+    ProcessTimeout,
+    ProcessTerminationUnverified,
     OutputLimit,
     PostconditionFailed,
     InternalError,
