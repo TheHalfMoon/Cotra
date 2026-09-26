@@ -28,47 +28,41 @@ jobs:
           daemon = Path('crates/cotrad/src/main.rs')
           d = daemon.read_text(encoding='utf-8')
 
-          old_import = '    use cotra_approval::{test_support::FixedApprovalBroker, ApprovalError, ApprovalPrompt};'
-          new_import = '''    use cotra_approval::{ApprovalError, ApprovalPrompt};
-              #[cfg(windows)]
-              use cotra_approval::test_support::FixedApprovalBroker;'''
-          if old_import not in d:
-              raise SystemExit('cotrad test import anchor not found')
+          old_import = 'use cotra_approval::{test_support::FixedApprovalBroker, ApprovalError, ApprovalPrompt};'
+          new_import = '''use cotra_approval::{ApprovalError, ApprovalPrompt};
+          #[cfg(windows)]
+          use cotra_approval::test_support::FixedApprovalBroker;'''
+          if d.count(old_import) != 1:
+              raise SystemExit(f'expected one cotrad test import anchor, found {d.count(old_import)}')
           d = d.replace(old_import, new_import, 1)
 
-          old_executable = '''        let executable = std::env::current_exe().expect("test executable");
-              let request = process_request(&workspace, executable);'''
-          new_executable = '''        #[cfg(windows)]
-              let executable = {
-                  let system_root = std::env::var_os("SystemRoot").expect("SystemRoot");
-                  PathBuf::from(system_root).join("System32").join("whoami.exe")
-              };
-              #[cfg(not(windows))]
-              let executable = std::env::current_exe().expect("test executable");
-              let request = process_request(&workspace, executable);'''
-          if old_executable not in d:
-              raise SystemExit('cotrad approval test executable anchor not found')
-          d = d.replace(old_executable, new_executable, 1)
+          fn_start = d.index('fn process_spawn_denial_and_unavailable_approval_fail_before_execution()')
+          fn_end = d.index('fn process_approval_digest_changes_for_material_plan_drift()', fn_start)
+          block = d[fn_start:fn_end]
+          old_exec = 'let executable = std::env::current_exe().expect("test executable");'
+          if block.count(old_exec) != 1:
+              raise SystemExit(f'expected one approval-test executable anchor, found {block.count(old_exec)}')
+          new_exec = '''#[cfg(windows)]
+                  let executable = {
+                      let system_root = std::env::var_os("SystemRoot").expect("SystemRoot");
+                      PathBuf::from(system_root).join("System32").join("whoami.exe")
+                  };
+                  #[cfg(not(windows))]
+                  let executable = std::env::current_exe().expect("test executable");'''
+          block = block.replace(old_exec, new_exec, 1)
+          d = d[:fn_start] + block + d[fn_end:]
 
-          old_summary = '''        summary: format!(
-              "argv={} cwd={} timeout={}ms stdout_limit={} stderr_limit={} stdin=null network=NONE",
-              plan.argv.len(),
-              plan.cwd.display(),
-              plan.limits.timeout.as_millis(),
-              plan.limits.stdout_bytes,
-              plan.limits.stderr_bytes
-          ),'''
-          new_summary = '''        summary: format!(
-              "argv={:?} cwd={} timeout={}ms stdout_limit={} stderr_limit={} stdin=null network=NONE",
-              plan.argv,
-              plan.cwd.display(),
-              plan.limits.timeout.as_millis(),
-              plan.limits.stdout_bytes,
-              plan.limits.stderr_bytes
-          ),'''
-          if old_summary not in d:
-              raise SystemExit('cotrad approval summary anchor not found')
-          d = d.replace(old_summary, new_summary, 1)
+          old_fmt = '"argv={} cwd={} timeout={}ms stdout_limit={} stderr_limit={} stdin=null network=NONE"'
+          new_fmt = '"argv={:?} cwd={} timeout={}ms stdout_limit={} stderr_limit={} stdin=null network=NONE"'
+          if d.count(old_fmt) != 1:
+              raise SystemExit(f'expected one approval summary format anchor, found {d.count(old_fmt)}')
+          d = d.replace(old_fmt, new_fmt, 1)
+          old_arg = 'plan.argv.len(),\n            plan.cwd.display(),'
+          new_arg = 'plan.argv,\n            plan.cwd.display(),'
+          if d.count(old_arg) != 1:
+              raise SystemExit(f'expected one approval summary argv anchor, found {d.count(old_arg)}')
+          d = d.replace(old_arg, new_arg, 1)
+
           daemon.write_text(d, encoding='utf-8')
           PY
 
