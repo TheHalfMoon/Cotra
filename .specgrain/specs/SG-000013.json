@@ -1,0 +1,119 @@
+{
+  "id": "SG-000013",
+  "title": "Private bounded PowerShell containment qualification",
+  "program": "COTRA-P05",
+  "state": "GRAIN",
+  "risk": "high",
+  "created": "2026-09-26",
+  "base": "197e6171e71dc3641b95751da848e4f9c1cf41fc",
+  "dependencies": [
+    "SG-000002",
+    "SG-000004",
+    "SG-000010",
+    "SG-000011",
+    "SG-000012"
+  ],
+  "objective": "Qualify the first bounded Windows PowerShell execution path inside the already-proven Cotra containment boundary before any public powershell.run authority is exposed. The qualification must use the inbox Windows PowerShell executable with a fixed provider-private script, explicit NoProfile/NonInteractive semantics, sanitized environment, NUL stdin, zero network capabilities, bounded stdout/stderr and timeout, Job lifecycle accounting, verified termination, and protected-state isolation.",
+  "scope": {
+    "include": [
+      "provider-private native Windows PowerShell qualification mode",
+      "exact inbox Windows PowerShell executable path under System32 WindowsPowerShell v1.0",
+      "fixed provider-private script fixture only",
+      "-NoLogo -NoProfile -NonInteractive invocation semantics",
+      "explicit trusted-workspace cwd",
+      "existing sanitized execution environment with Cotra/tunnel secret exclusion",
+      "NUL/no-input stdin",
+      "zero AppContainer network capabilities",
+      "bounded timeout stdout and stderr",
+      "AppContainer suspended launch and token verification",
+      "Job assignment and membership verification before resume",
+      "verified zero active Job processes before destructive classifications",
+      "post-primary-exit descendant-aware pipe lifecycle from SG-000011",
+      "protected-state and authority-channel isolation regressions from SG-000012",
+      "native Windows success timeout and output-limit qualification"
+    ],
+    "exclude": [
+      "public powershell.run MCP capability",
+      "caller-provided PowerShell script text",
+      "caller-selected PowerShell executable path",
+      "PowerShell through process.spawn",
+      "raw cmd.exe or shell authority",
+      "generic executable-registry widening",
+      "caller-provided environment overrides",
+      "stdin payload injection",
+      "profile loading",
+      "PowerShell remoting",
+      "process network capability",
+      "background or detached execution",
+      "public process kill authority",
+      "Git mutation",
+      "browser or UI automation",
+      "elevation",
+      "approval bypass or persistent approval reuse"
+    ]
+  },
+  "authority_delta": {
+    "filesystem": "None; provider-private qualification only and cwd remains inside an already trusted workspace",
+    "process": "No new public process authority; adds only a provider-private fixed PowerShell qualification mode",
+    "network": "None; AppContainer receives zero capabilities and PowerShell remoting is excluded",
+    "browser": "None",
+    "ui_input": "None",
+    "secrets": "No new secret access; Cotra/tunnel/API secret-like variables remain excluded from the child environment",
+    "approval": "No public approval surface change in this qualification grain",
+    "privileged": "None"
+  },
+  "invariants": [
+    "Public powershell.run remains absent throughout this grain",
+    "Windows public process.spawn remains restricted to the SG-000010-qualified System32 whoami.exe target",
+    "The qualification executable is the exact inbox Windows PowerShell binary and is provider-private",
+    "The PowerShell script fixture is fixed by the provider and cannot be caller supplied",
+    "PowerShell starts with NoProfile and NonInteractive semantics and receives NUL stdin",
+    "The child inherits only the already-qualified sanitized environment and explicit standard handles",
+    "Cotra/tunnel/API secret-like variables remain absent from the PowerShell child environment",
+    "The AppContainer has zero network capabilities and PowerShell remoting is not enabled",
+    "The child is created suspended and verified as AppContainer before resume",
+    "The child is assigned to the kill-on-close Job and membership is verified before resume",
+    "Timeout or output-limit classification is returned only after verified Job quiescence",
+    "Failure to prove termination or final pipe closure returns TerminationUnverified",
+    "The restricted child cannot read Cotra protected state or inherit the cotra-mcp to cotrad authority channel",
+    "No generic executable registry, Git mutation, browser/UI, elevation, approval bypass, or persistent approval reuse is introduced"
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "claim": "Native Windows exact-head tests launch the exact inbox Windows PowerShell executable through a provider-private fixed-script mode using NoLogo, NoProfile, NonInteractive, trusted-workspace cwd, sanitized environment, NUL stdin, and zero network capabilities."
+    },
+    {
+      "id": "A2",
+      "claim": "The fixed PowerShell fixture completes successfully with bounded stdout/stderr, expected deterministic output, AppContainer identity verified, pre-resume Job membership verified, and final zero-active-process Job quiescence."
+    },
+    {
+      "id": "A3",
+      "claim": "Timeout and stdout/stderr output-limit PowerShell qualification paths preserve typed ProcessTimeout, OutputLimit, and TerminationUnverified semantics and prove verified process-tree termination before destructive classifications."
+    },
+    {
+      "id": "A4",
+      "claim": "Tests prove profile loading is disabled, stdin is NUL/EOF, caller environment/script/executable overrides are unavailable, PowerShell remoting/network capability is absent, and Cotra/tunnel/API secret-like variables are not inherited."
+    },
+    {
+      "id": "A5",
+      "claim": "SG-000011 descendant-aware post-exit pipe lifecycle remains bounded for the PowerShell qualification path and SG-000012 protected-state/authority-channel isolation remains green."
+    },
+    {
+      "id": "A6",
+      "claim": "No public powershell.run or additional process.spawn executable authority is registered by this grain; policy, cotrad, and MCP continue to deny PowerShell authority."
+    },
+    {
+      "id": "A7",
+      "claim": "Exact-head Windows/Ubuntu Rust, Node, Governance, genuine TypeSafe Jev, Alibaba Open Code Review, exact-diff security review, and zero unresolved blocking review threads all pass."
+    }
+  ],
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": "where integrated",
+    "security_review": true,
+    "exact_head_ci": true
+  },
+  "done_when": "The provider-private bounded PowerShell containment path is merged with exact-head and post-merge verification on native Windows, the existing process and protected-state boundaries remain green, and no public PowerShell authority has been introduced."
+}
