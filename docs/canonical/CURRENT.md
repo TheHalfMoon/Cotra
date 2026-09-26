@@ -1,78 +1,62 @@
 # Cotra Current Canonical Frontier
 
-Status: IMPLEMENTATION
-Date: 2026-09-25
-Canonical main: f405b7f0fcbc949d5f9ddf868e8e5029b1024310
+Status: GOVERNANCE_RECONCILIATION
+Date: 2026-09-26
+Governance snapshot base: 4d843a6b519faf39ac16e320e99683b236140b5c
+Evidence ledger: `.specgrain/canonical-evidence.json`
 
-SG-000009 closeout merge (historical): 617b06ca234298f5cca184d66c04df5ce1b1b4cc
+`Governance snapshot base` records the canonical parent from which this snapshot was authored. It deliberately does not claim the eventual merge SHA of the commit containing this file. This avoids the self-referential stale-main failure mode that affected earlier closeout snapshots.
 
-SG-000009A implementation merge: f405b7f0fcbc949d5f9ddf868e8e5029b1024310
-SG-000009A qualified head: 8e43a8404d08da6932922caa2a956dee54df4072
-SG-000009A implementation base: b350932c4226fc5250a2d234c1927149f7c49064
+## SpecGrain state semantics
 
-SG-000001 through SG-000009A are COMPLETE_CANONICAL.
+- `GRAIN`: authorized/active packet whose acceptance is not yet canonically proven.
+- `PROVEN`: acceptance and required qualification are proven, but canonical closeout/governance is incomplete.
+- `CLOSED`: machine state corresponding to Diffcipline `COMPLETE_CANONICAL`.
 
-SG-000009:
-- qualified head ca17e5b5f8145dfb01ad0ad6102587ef7f80ed76
-- implementation merge ba6aa919d35432db0c049ca970be29f95767041f
-- closeout merge 617b06ca234298f5cca184d66c04df5ce1b1b4cc
-- pre-merge CI 36027271683 - SUCCESS
-- Review Gates 36027269455 - SUCCESS; Jev 20/20 hunks, zero findings; OCR exact range PASSED
-- post-merge CI 36029004410 - SUCCESS
-- SG-000009 closeout post-merge CI 36029741014 - SUCCESS
-- native Windows fixed no-argument whoami.exe AppContainer qualification proven
+The machine-readable evidence for every `CLOSED` grain is recorded in `.specgrain/canonical-evidence.json` and validated by CI.
 
-SG-000009A:
-- qualified head 8e43a8404d08da6932922caa2a956dee54df4072
-- implementation merge f405b7f0fcbc949d5f9ddf868e8e5029b1024310
-- pre-merge CI 36034565643 - SUCCESS
-- Review Gates 36034562275 - SUCCESS; Jev 15/15 hunks, zero findings; OCR exact-range delegation PASSED
-- post-merge CI 36196698333 - SUCCESS
-- native Windows destructive timeout, stdout-limit, stderr-limit, and TerminationUnverified qualification proven; SG-000009 regression retained
+## Closed canonical grains
 
-Canonical capabilities:
-- system.status
-- workspace.get
-- fs.stat/list/read/search
-- approved fs.write preview/write
-- git.status/diff/log
+SG-000001 through SG-000009A are `CLOSED` in this reconciliation candidate. The state becomes canonical only when this governance-only reconciliation is merged with exact-head qualification and post-merge verification.
+
+Important historical boundaries remain explicit:
+- SG-000004 closed the tunnel supervisor/credential-isolation grain; live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
+- SG-000009 closed the fixed provider-private no-argument `whoami.exe` AppContainer success path.
+- SG-000009A closed provider-private destructive timeout/stdout-limit/stderr-limit termination qualification with verified zero active Job processes and fail-closed `TerminationUnverified` semantics.
+
+## Canonical capabilities through the snapshot base
+
+- `system.status`
+- `workspace.get`
+- `fs.stat/list/read/search`
+- approved `fs.write` preview/write
+- `git.status/diff/log`
 - secure tunnel-client supervisor with file-referenced runtime credential isolation
 - internal protected execution planning contract
-- native Windows AppContainer profile primitive qualified
-- native Windows Job Object kill-on-close primitive qualified
+- native Windows AppContainer profile primitive
+- native Windows Job Object kill-on-close primitive
 - native Windows contained fixed-child launch qualification
-- native Windows destructive timeout/output-limit termination with verified Job quiescence (provider-private; no process.spawn)
+- native Windows destructive timeout/output-limit termination with verified Job quiescence, provider-private only
 
-Live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
+## Still denied or absent
 
-Active grain:
-SG-000009A closeout - reconcile CURRENT with actual Git history and record post-merge evidence
-
-Branch:
-chore/sg-000009a-closeout
-
-SG-000009A is proven on merged main:
-- fixed provider-private timeout and output-limit child modes
-- Job termination with verified zero active processes
-- typed ProcessTimeout, stream-typed OutputLimit, and TerminationUnverified evidence
-- no expansion of process.spawn, PowerShell, arbitrary executable, network, ACL, browser/UI, elevation, or approval authority
-
-SG-000009 remains canonical for the fixed private no-argument child success path. SG-000009A is now canonical for destructive timeout/output-limit descendant-tree runtime qualification.
-
-Still denied / absent:
-- process.spawn MCP authority
+- public/MCP `process.spawn` authority
 - PowerShell
 - caller-selected arbitrary executable authority
-- network authority
+- process network authority
 - browser automation
-- UI automation/input
+- Windows UI Automation/input injection
 - elevation
+- Git mutation
 
-Architecture:
-Cotra is standalone; Kernux is not a dependency.
+## Active frontier
 
-Evidence rule:
-Never claim PROVEN without required platform/test evidence.
+Canonical-state reconciliation only.
 
-Language rule:
-All repository technical content is English only.
+No successor grain is canonical yet. After this reconciliation merges and post-merge CI succeeds, the next lawful unit must be derived from the canonical architecture/delivery plan, remaining P05 exit criteria, and repository truth. Local or untracked SG-000010 artifacts are not canonical evidence.
+
+Architecture: Cotra is standalone; Kernux is not a dependency.
+
+Evidence rule: never claim PROVEN or CLOSED without the required exact-head, platform, merge, post-merge, and governance evidence applicable to that grain.
+
+Language rule: all repository technical content is English only.
