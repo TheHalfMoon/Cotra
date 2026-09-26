@@ -70,6 +70,15 @@ fn protected_state_child() {
         "contained child inherited Cotra daemon authority"
     );
 
+    // The contained executor binds stdin to NUL. A zero-length read proves the
+    // child did not inherit the request-scoped cotra-mcp -> cotrad stdin pipe.
+    use std::io::Read;
+    let mut byte = [0u8; 1];
+    let read = std::io::stdin()
+        .read(&mut byte)
+        .expect("read contained stdin");
+    assert_eq!(read, 0, "contained child inherited a readable stdin authority channel");
+
     if std::fs::read(sentinel_path()).is_ok() {
         panic!("restricted AppContainer child could read Cotra protected state");
     }
