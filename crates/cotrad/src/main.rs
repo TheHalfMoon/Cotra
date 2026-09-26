@@ -4,10 +4,17 @@ use cotra_contracts::{FailureCode, RequestEnvelope, ResponseEnvelope, INTERNAL_P
 use cotra_policy::{PolicyEngine, Workspace, POLICY_REVISION};
 use cotra_provider_fs::{FsProvider, ProviderError};
 use cotra_provider_git::{GitProvider, GitProviderError};
+use cotra_provider_process::{
+    build_execution_plan, execute_contained, ExecutionLimits, OutputStream,
+    PrivateExecutionFailure,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Debug, Deserialize)]
 struct WorkspaceConfig {
@@ -29,7 +36,7 @@ fn run() -> Result<(), String> {
     let approval = LocalApprovalBroker;
 
     eprintln!(
-        "cotrad ready: protocol={} audit={} mode=SG-000003_READ_ONLY_GIT",
+        "cotrad ready: protocol={} audit={} mode=SG-000010_BOUNDED_PROCESS_SPAWN",
         INTERNAL_PROTOCOL_VERSION,
         audit.path().display()
     );
@@ -126,6 +133,9 @@ fn handle_request(
                 FailureCode::ApprovalDenied => "APPROVAL_DENIED",
                 FailureCode::ApprovalUnavailable => "APPROVAL_UNAVAILABLE",
                 FailureCode::TargetStale => "TARGET_STALE",
+                FailureCode::ProcessTimeout => "PROCESS_TIMEOUT",
+                FailureCode::ProcessTerminationUnverified => "PROCESS_TERMINATION_UNVERIFIED",
+                FailureCode::OutputLimit => "OUTPUT_LIMIT",
                 _ => "FAILED",
             };
             let _ = audit.record(&request, decision.policy_revision, state);
@@ -148,7 +158,7 @@ fn dispatch(
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH,
             "pid": std::process::id(),
-            "mode": "SG-000003_READ_ONLY_GIT"
+            "mode": "SG-000010_BOUNDED_PROCESS_SPAWN"
         })),
         ("workspace.get", "get") => {
             let configured = policy.workspace(&workspace.id).ok_or_else(|| {
@@ -161,7 +171,7 @@ fn dispatch(
                 "id": configured.id,
                 "root": configured.root,
                 "policy_revision": POLICY_REVISION,
-                "mode": "approved_write_read_only_git"
+                "mode": "approved_write_bounded_process_read_only_git"
             }))
         }
         ("fs.stat", "stat") => fs_provider(workspace)?.stat(target(request)?),
@@ -191,6 +201,8 @@ fn dispatch(
                 .preview_write(target(request)?, content)?
                 .to_json())
         }
+        ("fs.write", "write") => write_file(workspace, approval, request),
+        ("process.spawn", "spawn") => process_spawn(workspace, approval, request),
         ("git.status", "status") => git_result(git_provider(workspace)?.status(target(request)?)),
         ("git.diff", "diff") => {
             let staged = request
@@ -209,83 +221,294 @@ fn dispatch(
                 .clamp(1, 100) as usize;
             git_result(git_provider(workspace)?.log(target(request)?, max_count))
         }
-        ("fs.write", "write") => {
-            let content = content(request)?;
-            let relative = target(request)?;
-            let provider = fs_provider(workspace)?;
-            let preview = provider.preview_write(relative, content)?;
-            let expected = request
-                .arguments
-                .get("expected_current_sha256")
-                .and_then(Value::as_str);
-            let create_if_missing = request
-                .arguments
-                .get("create_if_missing")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-
-            match (&preview.current_sha256, expected) {
-                (Some(actual), Some(expected)) if actual == expected => {}
-                (Some(_), Some(_)) => {
-                    return Err(ProviderError::new(
-                        FailureCode::TargetStale,
-                        "target changed since preview",
-                    ))
-                }
-                (Some(_), None) => {
-                    return Err(ProviderError::new(
-                        FailureCode::TargetStale,
-                        "existing file requires expected_current_sha256 from preview",
-                    ))
-                }
-                (None, Some(_)) => {
-                    return Err(ProviderError::new(
-                        FailureCode::TargetStale,
-                        "target disappeared since preview",
-                    ))
-                }
-                (None, None) if create_if_missing => {}
-                (None, None) => {
-                    return Err(ProviderError::new(
-                        FailureCode::TargetStale,
-                        "missing target requires create_if_missing=true",
-                    ))
-                }
-            }
-
-            let prompt = ApprovalPrompt {
-                workspace_id: workspace.id.clone(),
-                action: if preview.exists {
-                    "overwrite UTF-8 file".into()
-                } else {
-                    "create UTF-8 file".into()
-                },
-                target: relative.to_owned(),
-                summary: format!(
-                    "{} bytes; new SHA-256 {}",
-                    preview.bytes, preview.new_sha256
-                ),
-                digest: preview.approval_digest(&workspace.id, POLICY_REVISION),
-            };
-
-            match approval.request(&prompt) {
-                Ok(ApprovalDecision::Approved) => {}
-                Ok(ApprovalDecision::Denied) => {
-                    return Err(ProviderError::new(
-                        FailureCode::ApprovalDenied,
-                        "local user denied file write",
-                    ))
-                }
-                Err(error) => return Err(ProviderError::new(error.code, error.message)),
-            }
-
-            provider.write_text(relative, content, expected, create_if_missing)
-        }
         _ => Err(ProviderError::new(
             FailureCode::CapabilityDenied,
             "dispatch reached an unauthorized capability",
         )),
     }
+}
+
+fn write_file(
+    workspace: &Workspace,
+    approval: &impl ApprovalBroker,
+    request: &RequestEnvelope,
+) -> Result<Value, ProviderError> {
+    let content = content(request)?;
+    let relative = target(request)?;
+    let provider = fs_provider(workspace)?;
+    let preview = provider.preview_write(relative, content)?;
+    let expected = request
+        .arguments
+        .get("expected_current_sha256")
+        .and_then(Value::as_str);
+    let create_if_missing = request
+        .arguments
+        .get("create_if_missing")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    match (&preview.current_sha256, expected) {
+        (Some(actual), Some(expected)) if actual == expected => {}
+        (Some(_), Some(_)) => {
+            return Err(ProviderError::new(
+                FailureCode::TargetStale,
+                "target changed since preview",
+            ))
+        }
+        (Some(_), None) => {
+            return Err(ProviderError::new(
+                FailureCode::TargetStale,
+                "existing file requires expected_current_sha256 from preview",
+            ))
+        }
+        (None, Some(_)) => {
+            return Err(ProviderError::new(
+                FailureCode::TargetStale,
+                "target disappeared since preview",
+            ))
+        }
+        (None, None) if create_if_missing => {}
+        (None, None) => {
+            return Err(ProviderError::new(
+                FailureCode::TargetStale,
+                "missing target requires create_if_missing=true",
+            ))
+        }
+    }
+
+    let prompt = ApprovalPrompt {
+        workspace_id: workspace.id.clone(),
+        action: if preview.exists {
+            "overwrite UTF-8 file".into()
+        } else {
+            "create UTF-8 file".into()
+        },
+        target: relative.to_owned(),
+        summary: format!(
+            "{} bytes; new SHA-256 {}",
+            preview.bytes, preview.new_sha256
+        ),
+        digest: preview.approval_digest(&workspace.id, POLICY_REVISION),
+    };
+
+    require_approval(approval, &prompt, "file write")?;
+    provider.write_text(relative, content, expected, create_if_missing)
+}
+
+fn process_spawn(
+    workspace: &Workspace,
+    approval: &impl ApprovalBroker,
+    request: &RequestEnvelope,
+) -> Result<Value, ProviderError> {
+    let executable = process_string(request, "executable")?;
+    let cwd = process_string(request, "cwd")?;
+    let argv = request
+        .arguments
+        .get("argv")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            ProviderError::new(
+                FailureCode::InvalidRequest,
+                "process.spawn requires arguments.argv",
+            )
+        })?
+        .iter()
+        .map(|value| {
+            value.as_str().map(str::to_owned).ok_or_else(|| {
+                ProviderError::new(
+                    FailureCode::InvalidRequest,
+                    "process.spawn argv entries must be strings",
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let timeout_ms = process_u64(request, "timeout_ms")?;
+    let stdout_bytes = usize::try_from(process_u64(request, "stdout_bytes")?).map_err(|_| {
+        ProviderError::new(
+            FailureCode::InvalidRequest,
+            "process.spawn stdout_bytes does not fit this platform",
+        )
+    })?;
+    let stderr_bytes = usize::try_from(process_u64(request, "stderr_bytes")?).map_err(|_| {
+        ProviderError::new(
+            FailureCode::InvalidRequest,
+            "process.spawn stderr_bytes does not fit this platform",
+        )
+    })?;
+
+    if process_string(request, "stdin_policy")? != "null" {
+        return Err(ProviderError::new(
+            FailureCode::InvalidRequest,
+            "process.spawn stdin_policy must be null",
+        ));
+    }
+    if process_string(request, "network_class")? != "NONE" {
+        return Err(ProviderError::new(
+            FailureCode::CapabilityDenied,
+            "process.spawn network_class must be NONE",
+        ));
+    }
+
+    let source_env = std::env::vars().collect::<BTreeMap<_, _>>();
+    let plan = build_execution_plan(
+        &workspace.root,
+        executable,
+        &argv,
+        cwd,
+        &source_env,
+        ExecutionLimits {
+            timeout: Duration::from_millis(timeout_ms),
+            stdout_bytes,
+            stderr_bytes,
+        },
+    )
+    .map_err(|error| ProviderError::new(FailureCode::InvalidRequest, error.message))?;
+
+    let prompt = ApprovalPrompt {
+        workspace_id: workspace.id.clone(),
+        action: "execute argv process".into(),
+        target: plan.executable.display().to_string(),
+        summary: format!(
+            "argv={} cwd={} timeout={}ms stdout_limit={} stderr_limit={} stdin=null network=NONE",
+            plan.argv.len(),
+            plan.cwd.display(),
+            plan.limits.timeout.as_millis(),
+            plan.limits.stdout_bytes,
+            plan.limits.stderr_bytes
+        ),
+        digest: process_approval_digest(workspace, &plan),
+    };
+    require_approval(approval, &prompt, "process execution")?;
+
+    let profile = process_profile_name(&request.request_id);
+    let result = execute_contained(plan, &profile).map_err(map_process_failure)?;
+    Ok(json!({
+        "exit_code": result.exit_code,
+        "stdout": String::from_utf8_lossy(&result.stdout),
+        "stderr": String::from_utf8_lossy(&result.stderr),
+        "appcontainer_verified": result.appcontainer_verified,
+        "assigned_to_job_before_resume": result.assigned_to_job_before_resume,
+        "job_quiescent": result.job_quiescent,
+        "stdin_policy": "null",
+        "network_class": "NONE"
+    }))
+}
+
+fn process_approval_digest(workspace: &Workspace, plan: &cotra_provider_process::ExecutionPlan) -> String {
+    let mut hasher = Sha256::new();
+    digest_field(&mut hasher, b"COTRA_PROCESS_APPROVAL_V1");
+    digest_field(&mut hasher, workspace.id.as_bytes());
+    digest_field(&mut hasher, POLICY_REVISION.as_bytes());
+    digest_field(&mut hasher, plan.executable.to_string_lossy().as_bytes());
+    for argument in &plan.argv {
+        digest_field(&mut hasher, argument.as_bytes());
+    }
+    digest_field(&mut hasher, plan.cwd.to_string_lossy().as_bytes());
+    digest_field(
+        &mut hasher,
+        plan.limits.timeout.as_millis().to_string().as_bytes(),
+    );
+    digest_field(&mut hasher, plan.limits.stdout_bytes.to_string().as_bytes());
+    digest_field(&mut hasher, plan.limits.stderr_bytes.to_string().as_bytes());
+    digest_field(&mut hasher, b"stdin=null");
+    digest_field(&mut hasher, b"network=NONE");
+    for (name, value) in &plan.env {
+        digest_field(&mut hasher, name.as_bytes());
+        digest_field(&mut hasher, value.as_bytes());
+    }
+    hex_lower(&hasher.finalize())
+}
+
+fn digest_field(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value);
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let _ = write!(&mut output, "{byte:02x}");
+    }
+    output
+}
+
+fn process_profile_name(request_id: &str) -> String {
+    let digest = Sha256::digest(request_id.as_bytes());
+    let short = hex_lower(&digest[..12]);
+    format!("Cotra.Exec.{}.{}", std::process::id(), short)
+}
+
+fn map_process_failure(error: PrivateExecutionFailure) -> ProviderError {
+    match error {
+        PrivateExecutionFailure::InvalidPlan(message) => {
+            ProviderError::new(FailureCode::InvalidRequest, message)
+        }
+        PrivateExecutionFailure::Provider(message) => {
+            ProviderError::new(FailureCode::ProviderUnavailable, message)
+        }
+        PrivateExecutionFailure::ProcessTimeout => ProviderError::new(
+            FailureCode::ProcessTimeout,
+            "process exceeded the approved timeout and the Job was verified quiescent",
+        ),
+        PrivateExecutionFailure::OutputLimit(stream) => ProviderError::new(
+            FailureCode::OutputLimit,
+            match stream {
+                OutputStream::Stdout => {
+                    "process stdout exceeded the approved bound and the Job was verified quiescent"
+                }
+                OutputStream::Stderr => {
+                    "process stderr exceeded the approved bound and the Job was verified quiescent"
+                }
+            },
+        ),
+        PrivateExecutionFailure::TerminationUnverified => ProviderError::new(
+            FailureCode::ProcessTerminationUnverified,
+            "Cotra could not verify zero active Job processes after termination",
+        ),
+    }
+}
+
+fn require_approval(
+    approval: &impl ApprovalBroker,
+    prompt: &ApprovalPrompt,
+    action: &str,
+) -> Result<(), ProviderError> {
+    match approval.request(prompt) {
+        Ok(ApprovalDecision::Approved) => Ok(()),
+        Ok(ApprovalDecision::Denied) => Err(ProviderError::new(
+            FailureCode::ApprovalDenied,
+            format!("local user denied {action}"),
+        )),
+        Err(error) => Err(ProviderError::new(error.code, error.message)),
+    }
+}
+
+fn process_string<'a>(request: &'a RequestEnvelope, name: &str) -> Result<&'a str, ProviderError> {
+    request
+        .arguments
+        .get(name)
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            ProviderError::new(
+                FailureCode::InvalidRequest,
+                format!("process.spawn requires arguments.{name}"),
+            )
+        })
+}
+
+fn process_u64(request: &RequestEnvelope, name: &str) -> Result<u64, ProviderError> {
+    request
+        .arguments
+        .get(name)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            ProviderError::new(
+                FailureCode::InvalidRequest,
+                format!("process.spawn requires arguments.{name}"),
+            )
+        })
 }
 
 fn fs_provider(workspace: &Workspace) -> Result<FsProvider, ProviderError> {
@@ -326,7 +549,7 @@ fn content(request: &RequestEnvelope) -> Result<&str, ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cotra_approval::{ApprovalError, ApprovalPrompt};
+    use cotra_approval::{test_support::FixedApprovalBroker, ApprovalError, ApprovalPrompt};
     use serde_json::json;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -339,19 +562,52 @@ mod tests {
         }
     }
 
-    fn temp_root() -> PathBuf {
+    struct UnavailableBroker;
+
+    impl ApprovalBroker for UnavailableBroker {
+        fn request(&self, _prompt: &ApprovalPrompt) -> Result<ApprovalDecision, ApprovalError> {
+            Err(ApprovalError {
+                code: FailureCode::ApprovalUnavailable,
+                message: "approval unavailable in test".into(),
+            })
+        }
+    }
+
+    fn temp_root(label: &str) -> PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("cotra-daemon-write-{suffix}"));
+        let root = std::env::temp_dir().join(format!("cotra-daemon-{label}-{suffix}"));
         fs::create_dir_all(&root).expect("create temp workspace");
         root
     }
 
+    fn process_request(workspace: &Workspace, executable: PathBuf) -> RequestEnvelope {
+        RequestEnvelope {
+            version: INTERNAL_PROTOCOL_VERSION,
+            request_id: "process-test-request".into(),
+            client_session_id: "s-test".into(),
+            workspace_id: workspace.id.clone(),
+            capability: "process.spawn".into(),
+            operation: "spawn".into(),
+            target: None,
+            arguments: json!({
+                "executable": executable,
+                "argv": [],
+                "cwd": ".",
+                "timeout_ms": 30_000,
+                "stdout_bytes": 2 * 1024 * 1024,
+                "stderr_bytes": 256 * 1024,
+                "stdin_policy": "null",
+                "network_class": "NONE"
+            }),
+        }
+    }
+
     #[test]
     fn denied_approval_does_not_mutate_existing_file() {
-        let root = temp_root();
+        let root = temp_root("write");
         fs::write(root.join("notes.txt"), "before").expect("seed file");
         let workspace = Workspace {
             id: "default".into(),
@@ -385,6 +641,93 @@ mod tests {
             fs::read_to_string(root.join("notes.txt")).expect("read result"),
             "before"
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn process_spawn_denial_and_unavailable_approval_fail_before_execution() {
+        let root = temp_root("process-approval");
+        let workspace = Workspace {
+            id: "default".into(),
+            root: fs::canonicalize(&root).expect("canonical workspace"),
+        };
+        let policy = PolicyEngine::new(vec![workspace.clone()]).expect("policy");
+        let executable = std::env::current_exe().expect("test executable");
+        let request = process_request(&workspace, executable);
+        policy.authorize(&request).expect("policy accepts bounded request");
+
+        let denied = dispatch(&policy, &workspace, &DenyBroker, &request)
+            .expect_err("denied approval must prevent execution");
+        assert_eq!(denied.code, FailureCode::ApprovalDenied);
+
+        let unavailable = dispatch(&policy, &workspace, &UnavailableBroker, &request)
+            .expect_err("unavailable approval must prevent execution");
+        assert_eq!(unavailable.code, FailureCode::ApprovalUnavailable);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn process_approval_digest_changes_for_material_plan_drift() {
+        let root = temp_root("process-digest");
+        let workspace = Workspace {
+            id: "default".into(),
+            root: fs::canonicalize(&root).expect("canonical workspace"),
+        };
+        let executable = std::env::current_exe().expect("test executable");
+        let source_env = std::env::vars().collect::<BTreeMap<_, _>>();
+        let first = build_execution_plan(
+            &workspace.root,
+            &executable,
+            &["first".into()],
+            ".",
+            &source_env,
+            ExecutionLimits::default(),
+        )
+        .expect("first plan");
+        let second = build_execution_plan(
+            &workspace.root,
+            &executable,
+            &["second".into()],
+            ".",
+            &source_env,
+            ExecutionLimits::default(),
+        )
+        .expect("second plan");
+        assert_ne!(
+            process_approval_digest(&workspace, &first),
+            process_approval_digest(&workspace, &second)
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_public_process_spawn_executes_approved_system_argv_with_containment_evidence() {
+        let root = temp_root("process-public");
+        let workspace = Workspace {
+            id: "default".into(),
+            root: fs::canonicalize(&root).expect("canonical workspace"),
+        };
+        let policy = PolicyEngine::new(vec![workspace.clone()]).expect("policy");
+        let system_root = std::env::var_os("SystemRoot").expect("SystemRoot");
+        let executable = PathBuf::from(system_root).join("System32").join("whoami.exe");
+        let request = process_request(&workspace, executable);
+        policy.authorize(&request).expect("policy accepts public fixture");
+
+        let result = dispatch(
+            &policy,
+            &workspace,
+            &FixedApprovalBroker(ApprovalDecision::Approved),
+            &request,
+        )
+        .expect("approved public process.spawn");
+        assert_eq!(result["exit_code"], 0);
+        assert!(result["stdout"].as_str().is_some_and(|value| !value.is_empty()));
+        assert_eq!(result["stderr"], "");
+        assert_eq!(result["appcontainer_verified"], true);
+        assert_eq!(result["assigned_to_job_before_resume"], true);
+        assert_eq!(result["job_quiescent"], true);
+        assert_eq!(result["network_class"], "NONE");
         let _ = fs::remove_dir_all(root);
     }
 }
