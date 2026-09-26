@@ -730,6 +730,7 @@ pub(crate) enum PrivateExecutionMode {
     Timeout,
     StdoutLimit,
     StderrLimit,
+    DescendantDrain,
 }
 
 #[cfg(windows)]
@@ -820,6 +821,8 @@ mod windows_contained_launch {
     const ERROR_BROKEN_PIPE: u32 = 109;
     const QUIESCENCE_POLL_MS: u64 = 10;
     const QUIESCENCE_TIMEOUT_MS: u64 = 5_000;
+    const POST_EXIT_DRAIN_TIMEOUT_MS: u64 = 500;
+    const POST_TERMINATION_DRAIN_TIMEOUT_MS: u64 = 1_000;
 
     #[repr(C)]
     struct SidAndAttributes {
@@ -1808,6 +1811,60 @@ mod windows_contained_launch {
         classify_termination(event, verified)
     }
 
+    enum PostExitDrain {
+        Complete,
+        OutputLimit(OutputStream),
+        Deadline,
+    }
+
+    fn drain_pipes_until(
+        stdout_pipe: &PrivatePipe,
+        stderr_pipe: &PrivatePipe,
+        stdout: &mut Vec<u8>,
+        stderr: &mut Vec<u8>,
+        stdout_limit: usize,
+        stderr_limit: usize,
+        deadline: std::time::Instant,
+    ) -> Result<PostExitDrain, PrivateExecutionFailure> {
+        let mut stdout_closed = false;
+        let mut stderr_closed = false;
+        loop {
+            if !stdout_closed {
+                match read_pipe(stdout_pipe, stdout, stdout_limit) {
+                    Ok(PipeRead::Closed) => stdout_closed = true,
+                    Ok(PipeRead::Open) => {}
+                    Ok(PipeRead::LimitExceeded) => {
+                        return Ok(PostExitDrain::OutputLimit(OutputStream::Stdout));
+                    }
+                    Err(error) => {
+                        return Err(PrivateExecutionFailure::Provider(error.message));
+                    }
+                }
+            }
+            if !stderr_closed {
+                match read_pipe(stderr_pipe, stderr, stderr_limit) {
+                    Ok(PipeRead::Closed) => stderr_closed = true,
+                    Ok(PipeRead::Open) => {}
+                    Ok(PipeRead::LimitExceeded) => {
+                        return Ok(PostExitDrain::OutputLimit(OutputStream::Stderr));
+                    }
+                    Err(error) => {
+                        return Err(PrivateExecutionFailure::Provider(error.message));
+                    }
+                }
+            }
+            if stdout_closed && stderr_closed {
+                return Ok(PostExitDrain::Complete);
+            }
+            if std::time::Instant::now() >= deadline {
+                return Ok(PostExitDrain::Deadline);
+            }
+            unsafe {
+                Sleep(QUIESCENCE_POLL_MS as u32);
+            }
+        }
+    }
+
     pub(super) fn qualify_private_execution(
         plan: ExecutionPlan,
         profile_name: &str,
@@ -1823,7 +1880,8 @@ mod windows_contained_launch {
                 })?,
             PrivateExecutionMode::Timeout
             | PrivateExecutionMode::StdoutLimit
-            | PrivateExecutionMode::StderrLimit => std::env::current_exe()
+            | PrivateExecutionMode::StderrLimit
+            | PrivateExecutionMode::DescendantDrain => std::env::current_exe()
                 .map_err(|error| PrivateExecutionFailure::InvalidPlan(error.to_string()))?,
         };
         let expected_executable = std::fs::canonicalize(expected_executable)
@@ -1844,6 +1902,11 @@ mod windows_contained_launch {
             PrivateExecutionMode::StderrLimit => vec![
                 "--exact".into(),
                 "contained_launch_tests::private_stderr_fixture_child".into(),
+                "--nocapture".into(),
+            ],
+            PrivateExecutionMode::DescendantDrain => vec![
+                "--exact".into(),
+                "contained_launch_tests::private_descendant_primary_child".into(),
                 "--nocapture".into(),
             ],
         };
@@ -1874,6 +1937,7 @@ mod windows_contained_launch {
             PrivateExecutionMode::Timeout
                 | PrivateExecutionMode::StdoutLimit
                 | PrivateExecutionMode::StderrLimit
+                | PrivateExecutionMode::DescendantDrain
         ) {
             let descendant_argv = match mode {
                 PrivateExecutionMode::Timeout => vec![
@@ -1881,7 +1945,9 @@ mod windows_contained_launch {
                     "contained_launch_tests::private_timeout_descendant".to_owned(),
                     "--nocapture".to_owned(),
                 ],
-                PrivateExecutionMode::StdoutLimit | PrivateExecutionMode::StderrLimit => vec![
+                PrivateExecutionMode::StdoutLimit
+                | PrivateExecutionMode::StderrLimit
+                | PrivateExecutionMode::DescendantDrain => vec![
                     "--exact".to_owned(),
                     "contained_launch_tests::private_output_descendant".to_owned(),
                     "--nocapture".to_owned(),
@@ -1979,36 +2045,60 @@ mod windows_contained_launch {
         let exit_code = child
             .wait_for_completion()
             .map_err(|e| PrivateExecutionFailure::Provider(e.message))?;
-        let mut drain_event = None;
-        loop {
-            match read_pipe(&stdout_pipe, &mut stdout, plan.limits.stdout_bytes) {
-                Ok(PipeRead::Closed) => break,
-                Ok(PipeRead::Open) => {}
-                Ok(PipeRead::LimitExceeded) => {
-                    drain_event = Some(OutputStream::Stdout);
-                    break;
-                }
-                Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
+        let drain_deadline = std::time::Instant::now()
+            + std::time::Duration::from_millis(POST_EXIT_DRAIN_TIMEOUT_MS);
+        match drain_pipes_until(
+            &stdout_pipe,
+            &stderr_pipe,
+            &mut stdout,
+            &mut stderr,
+            plan.limits.stdout_bytes,
+            plan.limits.stderr_bytes,
+            drain_deadline,
+        )? {
+            PostExitDrain::Complete => {}
+            PostExitDrain::OutputLimit(stream) => {
+                return Err(terminate_and_verify(
+                    &job,
+                    DestructiveEvent::OutputLimit(stream),
+                ));
             }
-        }
-        if drain_event.is_none() {
-            loop {
-                match read_pipe(&stderr_pipe, &mut stderr, plan.limits.stderr_bytes) {
-                    Ok(PipeRead::Closed) => break,
-                    Ok(PipeRead::Open) => {}
-                    Ok(PipeRead::LimitExceeded) => {
-                        drain_event = Some(OutputStream::Stderr);
-                        break;
+            PostExitDrain::Deadline => {
+                let active = job
+                    .active_processes()
+                    .map_err(|_| PrivateExecutionFailure::TerminationUnverified)?;
+                if active == 0 || job.terminate().is_err() {
+                    return Err(PrivateExecutionFailure::TerminationUnverified);
+                }
+                if !matches!(job.wait_for_quiescence(), Ok(true)) {
+                    return Err(PrivateExecutionFailure::TerminationUnverified);
+                }
+                if let Some(descendant_process) = descendant.as_mut() {
+                    descendant_process.completed = true;
+                }
+                let cleanup_deadline = std::time::Instant::now()
+                    + std::time::Duration::from_millis(POST_TERMINATION_DRAIN_TIMEOUT_MS);
+                match drain_pipes_until(
+                    &stdout_pipe,
+                    &stderr_pipe,
+                    &mut stdout,
+                    &mut stderr,
+                    plan.limits.stdout_bytes,
+                    plan.limits.stderr_bytes,
+                    cleanup_deadline,
+                )? {
+                    PostExitDrain::Complete => {}
+                    PostExitDrain::OutputLimit(stream) => {
+                        return Err(classify_termination(
+                            DestructiveEvent::OutputLimit(stream),
+                            true,
+                        ));
                     }
-                    Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),
+                    PostExitDrain::Deadline => {
+                        return Err(PrivateExecutionFailure::TerminationUnverified);
+                    }
                 }
             }
-        }
-        if let Some(stream) = drain_event {
-            return Err(terminate_and_verify(
-                &job,
-                DestructiveEvent::OutputLimit(stream),
-            ));
         }
         let quiescent = job
             .wait_for_quiescence()
@@ -2349,6 +2439,13 @@ mod contained_launch_tests {
     }
 
     #[test]
+    fn private_descendant_primary_child() {
+        if std::env::args().any(|argument| argument == "--exact") {
+            return;
+        }
+    }
+
+    #[test]
     fn private_output_descendant() {
         if std::env::args().any(|argument| argument == "--exact") {
             std::thread::sleep(Duration::from_secs(30));
@@ -2433,6 +2530,37 @@ mod contained_launch_tests {
             result,
             Err(PrivateExecutionFailure::OutputLimit(OutputStream::Stderr))
         );
+        let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn windows_private_descendant_retained_stdio_is_bounded_and_quiescent() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let limits = ExecutionLimits {
+            timeout: Duration::from_secs(5),
+            stdout_bytes: 16 * 1024,
+            stderr_bytes: 16 * 1024,
+        };
+        let (workspace, plan) = private_fixture_plan(
+            suffix,
+            "contained_launch_tests::private_descendant_primary_child",
+            limits,
+        );
+        let started = std::time::Instant::now();
+        let result = qualify_private_execution_mode(
+            plan,
+            &format!("Cotra.Private.DescendantDrain.{suffix}"),
+            PrivateExecutionMode::DescendantDrain,
+        )
+        .expect("bounded descendant drain");
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(result.exit_code, 0);
+        assert!(result.appcontainer_verified);
+        assert!(result.assigned_to_job_before_resume);
+        assert!(result.job_quiescent);
         let _ = std::fs::remove_dir_all(workspace);
     }
 
