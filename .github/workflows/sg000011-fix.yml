@@ -1,0 +1,46 @@
+name: SG-000011 one-time clippy fix
+
+on:
+  push:
+    branches:
+      - feat/sg-000011-implementation
+    paths:
+      - .github/workflows/sg000011-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/sg-000011-implementation
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: Remove needless fixture return
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('crates/cotra-provider-process/src/lib.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '''    #[test]\n    fn private_descendant_primary_child() {\n        if std::env::args().any(|argument| argument == "--exact") {\n            return;\n        }\n    }\n'''
+          new = '''    #[test]\n    fn private_descendant_primary_child() {}\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one fixture block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cargo fmt --all
+          git diff --check
+          rm .github/workflows/sg000011-fix.yml
+          git config user.name "Cotra Governance Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: satisfy Windows clippy for descendant fixture"
+          git push origin HEAD:feat/sg-000011-implementation
