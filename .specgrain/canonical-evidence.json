@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_base": "23796b29eaed06781fe964d16a19768c7800886b",
+  "snapshot_base": "6b24a810712c7ee1edfab714c672447606dc0b13",
   "state_semantics": {
     "GRAIN": "Authorized or active work packet whose acceptance is not yet canonically proven.",
     "PROVEN": "Acceptance and required qualification are proven, but canonical closeout/governance is not yet complete.",
@@ -164,28 +164,9 @@
       "post_merge_ci": "36255431331",
       "review_basis": "Exact-head genuine TypeSafe Jev 2/2 hunks with zero findings/blocking findings, Alibaba Open Code Review v1.12.9 exact-range delegation, manual security review of the excluded security note, native Windows protected-state negative-access qualification, SG-000009/009A/010/011 regressions, and zero unresolved review threads.",
       "unresolved_review_threads": 0,
-      "native_windows": "SUCCESS: the zero-capability AppContainer child could not read the Cotra-owned LocalAppData sentinel, received no tested Cotra/API secret-like environment variables, observed NUL/EOF stdin rather than the cotra-mcp to cotrad authority channel, and reached verified Job quiescence.",
+      "native_windows": "SUCCESS: the zero-capability AppContainer child could not read the Cotra-owned LocalAppData sentinel, received no tested Cotra/API secret-like environment variables, observed NUL/EOF stdin rather than the cotrad authority channel, and reached verified Job quiescence.",
       "acl_repair_required": false,
       "authority_boundary": "No new public authority. Windows public process.spawn remains restricted to the exact SG-000010-qualified %SystemRoot%\\System32\\whoami.exe target; generic executable-registry widening, PowerShell, process network, detached/background execution, and public kill remain absent."
-    },
-    "SG-000013": {
-      "implementation_pr": 27,
-      "implementation_base": "6b4ec228619292271dd77700f0c7d966c219124c",
-      "qualified_head": "74b4a91d7b8e7f582a0df0fc814526658795514f",
-      "pre_merge_ci": "36258473411",
-      "pre_merge_review_gates": "36258472190",
-      "merge_sha": "ddfcb4c9d5f06af446d44e031eb96bd70e4424d9",
-      "post_merge_ci": "36258601073",
-      "first_closeout_pr": 28,
-      "first_closeout_head": "3b37d2e8c0a5a48ae3175a03820513979e043892",
-      "first_closeout_merge_sha": "23796b29eaed06781fe964d16a19768c7800886b",
-      "first_closeout_post_merge_ci": "36262599177",
-      "first_closeout_post_merge_conclusion": "failure",
-      "first_closeout_failure": "Windows Rust test authorizes_only_bounded_argv_process_spawn failed because a parallel test removed a colliding clock-only temp workspace name before PolicyEngine authorization. This is a test-isolation defect; SG-000013 remains PROVEN pending forward-only recovery and a fresh canonical closeout.",
-      "review_basis": "Implementation exact-head genuine TypeSafe Jev 2/2 hunks with zero findings/blocking findings, Alibaba Open Code Review v1.12.9 exact-range delegation, manual security review of the excluded security note, native Windows PowerShell success/timeout/stdout-limit/stderr-limit qualification, retained SG-000011/012 regressions, and zero unresolved review threads. First closeout exact-head qualification also passed, but its canonical post-merge verification failed on the unrelated Windows test-isolation defect recorded above.",
-      "unresolved_review_threads": 0,
-      "native_windows": "SUCCESS for the SG-000013 implementation: four PowerShell integration tests passed for deterministic success, verified timeout, verified stdout output limit, and verified stderr output limit inside the existing zero-capability AppContainer/Job containment boundary.",
-      "authority_boundary": "No new public authority. Public powershell.run remains absent and Windows public process.spawn remains restricted to the exact SG-000010-qualified %SystemRoot%\\System32\\whoami.exe target; generic executable-registry widening, process network, detached/background execution, public kill, Git mutation, browser/UI automation, elevation, and approval bypass/reuse remain absent."
     }
   }
 }
