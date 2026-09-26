@@ -42,6 +42,14 @@ Every execution requires a fresh independent local approval. The approval digest
 
 Material plan drift therefore changes the approval digest. Denied or unavailable approval returns before the contained executor is called.
 
+## MCP request lifecycle
+
+`process_spawn` does not share the long-lived read/write/Git daemon. Each EXECUTE request creates a request-scoped `KernelClient` / `cotrad` process, performs the approval and contained execution through that daemon, and closes it in a `finally` block.
+
+The MCP-side deadline is the requested provider runtime bound plus a five-minute local-approval window. If that deadline expires, the promise rejects and the `finally` block closes the request-scoped daemon. Closing `cotrad` drops its contained Job handle, so an execution cannot later start or continue silently after the MCP caller has already observed timeout. Other Cotra tools keep their independent long-lived daemon and are not interrupted by this fail-closed EXECUTE lifecycle.
+
+This is the SG-000010 cancellation boundary. A future durable-operation protocol may provide richer cancellation/reconnect semantics, but this grain must not leave an approval or contained process running after its request-scoped client has ended.
+
 ## Windows containment
 
 The public path reuses the already-qualified SG-000009/SG-000009A contained executor rather than introducing `std::process::Command` or a shell bypass.
