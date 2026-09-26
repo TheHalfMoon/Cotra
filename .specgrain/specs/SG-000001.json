@@ -2,7 +2,7 @@
   "id": "SG-000001",
   "title": "Trusted read-only MCP path and policy skeleton",
   "program": "COTRA-P01/P02/P03",
-  "state": "GRAIN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-23",
   "base": "7de4779682b9e8dc794d6c675d7ed6c420355d13",
@@ -58,38 +58,14 @@
     "No write/execute/browser/UI capability is accidentally exposed"
   ],
   "acceptance": [
-    {
-      "id": "A1",
-      "claim": "cotra-mcp can enumerate only the intended read-only tools and translate them into versioned internal requests."
-    },
-    {
-      "id": "A2",
-      "claim": "cotrad denies unknown and out-of-scope capabilities by default."
-    },
-    {
-      "id": "A3",
-      "claim": "A trusted temporary workspace can be listed, searched, and read from Windows."
-    },
-    {
-      "id": "A4",
-      "claim": "Symlink/junction/reparse-point attempts that resolve outside the trusted root fail closed."
-    },
-    {
-      "id": "A5",
-      "claim": "A path outside the trusted workspace cannot be read through spelling, case, device, relative, or alias tricks covered by the test corpus."
-    },
-    {
-      "id": "A6",
-      "claim": "Read operations create structured audit events with request/session/workspace/capability/policy/result fields."
-    },
-    {
-      "id": "A7",
-      "claim": "Tunnel development flow demonstrates private local reachability without an inbound public Cotra listener, or remains explicitly UNPROVEN if product access is unavailable."
-    },
-    {
-      "id": "A8",
-      "claim": "Windows-native CI or qualification is green for Windows-specific path/security claims."
-    }
+    {"id": "A1", "claim": "cotra-mcp can enumerate only the intended read-only tools and translate them into versioned internal requests."},
+    {"id": "A2", "claim": "cotrad denies unknown and out-of-scope capabilities by default."},
+    {"id": "A3", "claim": "A trusted temporary workspace can be listed, searched, and read from Windows."},
+    {"id": "A4", "claim": "Symlink/junction/reparse-point attempts that resolve outside the trusted root fail closed."},
+    {"id": "A5", "claim": "A path outside the trusted workspace cannot be read through spelling, case, device, relative, or alias tricks covered by the test corpus."},
+    {"id": "A6", "claim": "Read operations create structured audit events with request/session/workspace/capability/policy/result fields."},
+    {"id": "A7", "claim": "Tunnel development flow demonstrates private local reachability without an inbound public Cotra listener, or remains explicitly UNPROVEN if product access is unavailable."},
+    {"id": "A8", "claim": "Windows-native CI or qualification is green for Windows-specific path/security claims."}
   ],
   "required_tests": [
     "contract schema tests",
