@@ -14,6 +14,8 @@ The SG-000011 fixture is provider-private. The executor creates a primary test p
 
 Both processes are created suspended, token-verified as AppContainer processes, assigned to the same kill-on-close Job before resume, use the existing sanitized environment and three inherited standard handles, and receive no network capability.
 
+Exact-head CI, Jev, OCR, and post-merge evidence are recorded in the governed PR/SpecGrain closeout rather than self-referenced in this security note.
+
 ## Authority boundary
 
 No public authority is added. Windows public `process.spawn` remains restricted to the exact SG-000010-qualified `%SystemRoot%\System32\whoami.exe` target. Generic executable-registry widening, shell/cmd, PowerShell, caller environment overrides, stdin payloads, network, detached/background execution, public kill, Git mutation, browser/UI automation, elevation, and approval bypass/reuse remain absent.
