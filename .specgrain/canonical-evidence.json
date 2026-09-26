@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_base": "4d843a6b519faf39ac16e320e99683b236140b5c",
+  "snapshot_base": "388f5de196580d71275a31b84b584f5ac280baec",
   "state_semantics": {
     "GRAIN": "Authorized or active work packet whose acceptance is not yet canonically proven.",
     "PROVEN": "Acceptance and required qualification are proven, but canonical closeout/governance is not yet complete.",
@@ -129,6 +129,18 @@
       "closeout_post_merge_ci": "36198431012",
       "review_basis": "Implementation Jev 15/15 and closeout Jev 5/5 with zero findings/blocking findings; Alibaba OCR exact-range delegation succeeded on both qualified ranges.",
       "unresolved_review_threads": 0
+    },
+    "SG-000010": {
+      "implementation_pr": 18,
+      "implementation_base": "9c1e932d93abd46943e91af1118df0dce5fe35de",
+      "qualified_head": "248b96c17e3dc387371441ba12b5ee75d41c2495",
+      "pre_merge_ci": "36248970994",
+      "pre_merge_review_gates": "36248969775",
+      "merge_sha": "388f5de196580d71275a31b84b584f5ac280baec",
+      "post_merge_ci": "36250111765",
+      "review_basis": "Exact-head genuine TypeSafe Jev 46/46 hunks with zero findings/blocking findings, Alibaba Open Code Review v1.12.9 exact-range delegation, independent exact-head security re-review after positive executable-policy repair, native Windows qualification, and zero unresolved review threads.",
+      "unresolved_review_threads": 0,
+      "authority_boundary": "Windows public process.spawn is restricted to the exact qualified %SystemRoot%\\System32\\whoami.exe target. Generic executable-registry authority and descendant-producing executable qualification remain successor work."
     }
   }
 }
