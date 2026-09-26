@@ -2,7 +2,7 @@
 
 Status: IMPLEMENTATION
 Date: 2026-09-26
-Governance snapshot base: be1e6a28c77d25a8f9f1848c02df290ac74da734
+Governance snapshot base: 9c1e932d93abd46943e91af1118df0dce5fe35de
 Evidence ledger: `.specgrain/canonical-evidence.json`
 
 `Governance snapshot base` records the canonical parent from which this snapshot was authored. It deliberately does not claim the eventual merge SHA of the commit containing this file.
@@ -24,7 +24,20 @@ Important historical boundaries remain explicit:
 - SG-000009 closed the fixed provider-private no-argument `whoami.exe` AppContainer success path.
 - SG-000009A closed provider-private destructive timeout/stdout-limit/stderr-limit termination qualification with verified zero active Job processes and fail-closed `TerminationUnverified` semantics.
 
-## Canonical capabilities through the snapshot base
+## SG-000010 activation
+
+The SG-000010 governance/spec activation merged as `9c1e932d93abd46943e91af1118df0dce5fe35de` from exact qualified head `9c3824d53dd25047491cc204ac87b6eb333fb785`.
+
+Activation evidence:
+- exact-head CI `36240040249` — SUCCESS;
+- exact-head Review Gates `36240040252` — SUCCESS;
+- genuine Jev — 4/4 hunks, zero findings, zero blocking findings;
+- Alibaba Open Code Review delegation — SUCCESS;
+- activation post-merge CI `36241334989` — 5/5 SUCCESS.
+
+Activation added no runtime authority. It authorized the bounded implementation grain only.
+
+## Canonical capabilities before SG-000010 implementation
 
 - `system.status`
 - `workspace.get`
@@ -42,32 +55,36 @@ Important historical boundaries remain explicit:
 
 SG-000010 — Approved bounded argv `process.spawn`
 
-Branch:
-`feat/sg-000010-bounded-process-spawn`
+Implementation branch:
+`feat/sg-000010-implementation`
 
-SG-000010 may add exactly one new public EXECUTE capability:
-- `process.spawn` / `spawn`
-- executable and argv are separate typed fields; no raw command string
-- cwd resolves inside the selected workspace
-- caller environment overrides are absent
-- stdin policy is null/no-input only
-- timeout/stdout/stderr are bounded
-- network class is `NONE`
-- every execution requires fresh local approval bound to the exact normalized plan
-- execution uses the existing AppContainer + Job containment path and verified termination semantics
+The implementation candidate adds exactly one public EXECUTE capability:
+- `process.spawn` / `spawn`;
+- executable and argv are separate typed fields; no raw command string;
+- cwd resolves inside the selected workspace;
+- caller environment overrides are absent;
+- stdin policy is null/no-input only;
+- timeout/stdout/stderr are bounded;
+- network class is `NONE`;
+- every execution requires fresh local approval bound to the exact normalized execution plan;
+- execution reuses the existing zero-capability AppContainer + Job containment path and verified termination semantics.
+
+The implementation is not PROVEN until exact-head native Windows, portable CI, Jev, Alibaba OCR, security review, merge, and post-merge evidence are complete.
 
 Still denied / absent in SG-000010:
-- `powershell.run`
-- raw shell command strings
-- process network capability
-- background/detached execution
-- public process kill capability
-- browser automation
-- Windows UI Automation/input injection
-- elevation
-- Git mutation
+- `powershell.run`;
+- raw shell command strings;
+- caller-provided process environment overrides;
+- process stdin payload injection;
+- process network capability;
+- background/detached execution;
+- public process kill capability;
+- browser automation;
+- Windows UI Automation/input injection;
+- elevation;
+- Git mutation.
 
-The next P05 unit after SG-000010 must be derived from the canonical delivery plan and SG-000010 closeout evidence; bounded PowerShell and further protected-state hardening remain successor concerns.
+The next P05 unit after SG-000010 must be derived from the canonical delivery plan and SG-000010 closeout evidence. Bounded PowerShell and further protected-state hardening remain successor concerns, not current authority.
 
 Architecture: Cotra is standalone; Kernux is not a dependency.
 
