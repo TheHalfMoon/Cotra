@@ -1,0 +1,112 @@
+{
+  "id": "SG-000010",
+  "title": "Approved bounded argv process.spawn",
+  "program": "COTRA-P05",
+  "state": "GRAIN",
+  "risk": "high",
+  "created": "2026-09-26",
+  "base": "be1e6a28c77d25a8f9f1848c02df290ac74da734",
+  "dependencies": [
+    "SG-000002",
+    "SG-000005",
+    "SG-000008",
+    "SG-000009",
+    "SG-000009A"
+  ],
+  "objective": "Expose the first public process.spawn capability as an argv-only, locally approved, workspace-bound, zero-network execution path backed by the already-qualified AppContainer and Job Object executor, while preserving bounded output, verified termination, secret isolation, and a hard separation from PowerShell and shell command strings.",
+  "scope": {
+    "include": [
+      "process.spawn/spawn policy authorization",
+      "typed MCP process.spawn tool with executable plus argv array",
+      "absolute executable validation",
+      "workspace-bound cwd validation",
+      "sanitized inherited environment with no caller-provided environment overrides",
+      "explicit timeout/stdout/stderr bounds",
+      "stdin policy fixed to null/no-input",
+      "network_class fixed to NONE",
+      "local approval bound to the exact normalized execution plan",
+      "AppContainer suspended launch and token verification",
+      "Job assignment and membership before resume",
+      "bounded stdout/stderr and typed termination failures",
+      "verified zero active Job processes before timeout/output-limit results",
+      "native Windows end-to-end qualification"
+    ],
+    "exclude": [
+      "raw command strings",
+      "cmd.exe or shell interpolation as an API primitive",
+      "powershell.run",
+      "caller-provided environment overrides",
+      "stdin payload injection",
+      "process network capability",
+      "background/detached processes",
+      "process.kill_tree public capability",
+      "browser or UI automation",
+      "elevation",
+      "approval bypass",
+      "persistent approval reuse"
+    ]
+  },
+  "authority_delta": {
+    "filesystem": "No new filesystem capability; execution cwd must resolve within the already trusted workspace",
+    "process": "Adds one approved public argv-only process.spawn capability routed through the contained Windows executor",
+    "network": "None; network_class must be NONE and AppContainer receives zero capabilities",
+    "browser": "None",
+    "ui_input": "None; only the existing independent local approval surface is used",
+    "secrets": "No new secret access; caller environment overrides are absent and Cotra/tunnel secrets remain excluded",
+    "approval": "Every process.spawn execution requires a fresh local approval bound to the exact normalized plan",
+    "privileged": "None"
+  },
+  "invariants": [
+    "The MCP interface accepts executable and argv separately and never a shell command string",
+    "PowerShell remains a separate denied capability",
+    "The executable must resolve to an existing absolute file",
+    "The cwd must resolve inside the selected trusted workspace",
+    "Caller-provided environment variables are not accepted in this grain",
+    "The child inherits only the existing sanitized environment allowlist and explicit standard handles",
+    "The AppContainer has zero network capabilities",
+    "The child is created suspended and verified as AppContainer before resume",
+    "The child is assigned to the kill-on-close Job and membership is verified before resume",
+    "Timeout or output-limit classification is returned only after verified Job quiescence",
+    "Failure to prove termination returns TerminationUnverified",
+    "Approval is bound to executable, argv, cwd, limits, stdin policy, network class, workspace, and policy revision",
+    "No background execution or approval reuse is introduced"
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "claim": "Policy authorizes only process.spawn/spawn with a valid bounded argv request and continues denying PowerShell and unknown process operations."
+    },
+    {
+      "id": "A2",
+      "claim": "The MCP edge exposes a typed process.spawn tool with executable, argv, cwd, timeout/output bounds, null stdin policy, and network_class=NONE; it exposes no raw command-string field."
+    },
+    {
+      "id": "A3",
+      "claim": "cotrad normalizes the request, constructs a sanitized ExecutionPlan, obtains fresh local approval bound to the exact plan digest, and does not execute when approval is denied or unavailable."
+    },
+    {
+      "id": "A4",
+      "claim": "Native Windows exact-head tests execute an approved fixed inbox/system argv fixture through the public daemon/provider path and return bounded stdout/stderr plus exit code with AppContainer identity, pre-resume Job membership, and zero active Job processes verified."
+    },
+    {
+      "id": "A5",
+      "claim": "Native Windows timeout/stdout-limit/stderr-limit regressions retain typed ProcessTimeout/OutputLimit/TerminationUnverified semantics and SG-000009/SG-000009A qualification remains green."
+    },
+    {
+      "id": "A6",
+      "claim": "Tests prove cwd escape, relative/missing executable, NUL argv, non-NONE network class, non-null stdin policy, caller env injection, and over-limit requests fail closed before execution."
+    },
+    {
+      "id": "A7",
+      "claim": "Exact-head Windows/Ubuntu Rust, Node, Governance, genuine Jev, and Alibaba Open Code Review gates pass with zero unresolved blocking findings."
+    }
+  ],
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": "where integrated",
+    "security_review": true,
+    "exact_head_ci": true
+  },
+  "done_when": "The approved argv-only process.spawn path is merged with exact-head and post-merge verification, public PowerShell/network/background authority remains absent, and the next P05 unit can address PowerShell or further protected-state hardening without weakening this boundary."
+}
