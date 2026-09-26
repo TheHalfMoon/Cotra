@@ -7,12 +7,14 @@ Program: COTRA-P05
 
 SG-000010 adds exactly one public EXECUTE capability: `process.spawn` / `spawn`.
 
-The interface is argv-first. It accepts an absolute executable path and a separate argv array. It does not accept a raw command string, shell text, PowerShell text, caller environment overrides, stdin payloads, background execution, process network capability, public kill authority, elevation, browser/UI automation, or approval reuse.
+The interface is argv-first. It accepts an absolute executable path and a separate argv array, but this first public grain deliberately authorizes only the native Windows `whoami.exe` executable that is used by the qualification fixture. It does not accept a raw command string, shell text, PowerShell text, caller environment overrides, stdin payloads, background execution, process network capability, public kill authority, elevation, browser/UI automation, or approval reuse.
+
+This narrow positive executable policy is intentional. A generic absolute-executable policy would allow `cmd.exe`, PowerShell, another interpreter, or an equivalent renamed interpreter to smuggle shell/script authority through argv and would contradict the SG-000010 authority boundary. Executable-registry widening is therefore a successor authority grain with its own policy and qualification.
 
 ## Request boundary
 
 The MCP edge and policy kernel independently constrain:
-- executable: non-empty absolute local path;
+- executable: non-empty absolute local path, and on Windows it must resolve exactly to the qualified `%SystemRoot%\\System32\\whoami.exe` executable for SG-000010;
 - argv: bounded string array with no NUL bytes;
 - cwd: relative path resolving inside the selected trusted workspace;
 - timeout: 1 second through 30 minutes;
@@ -55,6 +57,8 @@ The child is:
 
 Timeout or output overflow terminates the Job and is promoted to its typed failure only after zero active Job processes are verified. Failure to prove quiescence returns `PROCESS_TERMINATION_UNVERIFIED`.
 
+The existing generic executor contains a post-primary-exit pipe-drain path that is not yet qualified for arbitrary executables that create descendants retaining stdio handles. SG-000010 avoids claiming that broader authority by limiting the public executable policy to the fixed `whoami.exe` qualification class. Descendant-aware post-exit drain/termination hardening is a prerequisite for any successor executable-registry widening.
+
 ## Output and evidence
 
 Successful execution returns bounded stdout/stderr, exit code, and containment evidence:
@@ -68,6 +72,8 @@ No background process handle or public process identifier is returned.
 
 ## Native qualification
 
-The required Windows end-to-end test traverses policy -> approval -> daemon -> process provider using a fixed system inbox `whoami.exe` fixture. It must prove exit/output evidence, AppContainer identity, pre-resume Job membership, and final Job quiescence.
+The required Windows end-to-end test traverses policy -> approval -> daemon -> process provider using the fixed system inbox `whoami.exe` fixture. It must prove exit/output evidence, AppContainer identity, pre-resume Job membership, and final Job quiescence.
+
+The Windows policy suite must also prove that direct `cmd.exe` and PowerShell executable requests are rejected as `CAPABILITY_DENIED` in SG-000010.
 
 SG-000009 and SG-000009A timeout/output-limit/termination regressions remain mandatory. Exact-head Windows/Ubuntu Rust, Node, Governance, genuine Jev, and Alibaba Open Code Review gates are required before merge.
