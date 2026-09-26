@@ -235,25 +235,32 @@ function createServer(): McpServer {
   );
 
   server.registerTool(
-    "process_spawn",
-    {
-      description:
-        "Execute one argv-only process after fresh local approval inside the selected trusted workspace. No shell string, caller environment, stdin payload, background mode, or process network authority is exposed.",
-      inputSchema: processSpawnInputSchema
-    },
-    async ({
-      workspace_id,
-      executable,
-      argv,
-      cwd,
-      timeout_ms,
-      stdout_bytes,
-      stderr_bytes,
-      stdin_policy,
-      network_class
-    }) =>
-      asToolResult(
-        await kernel.call({
+  "process_spawn",
+  {
+    description:
+      "Execute one argv-only process after fresh local approval inside the selected trusted workspace. No shell string, caller environment, stdin payload, background mode, or process network authority is exposed.",
+    inputSchema: processSpawnInputSchema
+  },
+  async ({
+    workspace_id,
+    executable,
+    argv,
+    cwd,
+    timeout_ms,
+    stdout_bytes,
+    stderr_bytes,
+    stdin_policy,
+    network_class
+  }) => {
+    // EXECUTE uses a request-scoped daemon. If the MCP-side deadline expires,
+    // the finally block closes this daemon; closing cotrad drops its Job handle,
+    // preventing an approved process from starting or continuing after the caller
+    // has already observed a timeout.
+    const processKernel = new KernelClient();
+    clients.add(processKernel);
+    try {
+      return asToolResult(
+        await processKernel.call({
           workspaceId: workspace_id,
           capability: "process.spawn",
           operation: "spawn",
@@ -267,10 +274,18 @@ function createServer(): McpServer {
             stdin_policy,
             network_class
           },
-          timeoutMs: timeout_ms + 30_000
+          // Runtime timeout is enforced inside the provider. The additional window
+          // is reserved for explicit local approval; expiration still fails closed
+          // because the request-scoped daemon is terminated in finally.
+          timeoutMs: timeout_ms + 5 * 60_000
         })
-      )
-  );
+      );
+    } finally {
+      clients.delete(processKernel);
+      processKernel.close();
+    }
+  }
+);
 
   server.registerTool(
     "git_status",
