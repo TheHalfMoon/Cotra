@@ -2,7 +2,7 @@
   "id": "SG-000002",
   "title": "Approved UTF-8 file mutation",
   "program": "COTRA-P04",
-  "state": "GRAIN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-24",
   "base": "4e83e019d8f3ebc38d6bd36edbce1afdcac1a5b7",

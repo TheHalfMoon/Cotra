@@ -2,7 +2,7 @@
   "id": "SG-000009",
   "title": "Private bounded argv execution qualification",
   "program": "COTRA-P05",
-  "state": "PROVEN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-24",
   "base": "2524b8f8bbf3ff196cb1bc2915312e785ab7a858",
@@ -103,10 +103,14 @@
     "pre_merge_ci": "36027271683",
     "pre_merge_review_gates": "36027269455",
     "post_merge_ci": "36029004410",
+    "closeout_pr": 12,
+    "closeout_head": "47565897a6f4a9f9f5628e3a94fb08c0ad324b89",
+    "closeout_merge_sha": "617b06ca234298f5cca184d66c04df5ce1b1b4cc",
+    "closeout_post_merge_ci": "36029741014",
     "native_windows": "SUCCESS",
     "jev": "PASSED: 20/20 hunks, zero findings, zero blocking findings",
     "ocr": "PASSED: exact range, 4 files, 2 reviewable, 2 excluded",
     "resolved_fixture_diagnostic": "whoami.exe /all returned exit code 1: ERROR: Unable to get user claims information.; final fixed no-argument whoami.exe passed",
-    "deferred": "Destructive timeout/output-limit descendant-tree runtime qualification remains successor work."
+    "deferred": "Destructive timeout/output-limit descendant-tree runtime qualification was successor work and was later qualified by SG-000009A."
   }
 }

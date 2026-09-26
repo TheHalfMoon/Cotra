@@ -2,7 +2,7 @@
   "id": "SG-000009A",
   "title": "Destructive timeout and output-limit termination qualification",
   "program": "COTRA-P05",
-  "state": "PROVEN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-24",
   "base": "617b06ca234298f5cca184d66c04df5ce1b1b4cc",
@@ -109,9 +109,15 @@
     "pre_merge_ci": "36034565643",
     "pre_merge_review_gates": "36034562275",
     "post_merge_ci": "36196698333",
+    "closeout_pr": 15,
+    "closeout_head": "790cae1e617d8eb8efa0f7baad77121394b2b2bf",
+    "closeout_pre_merge_ci": "36197082769",
+    "closeout_review_gates": "36197082800",
+    "closeout_merge_sha": "4d843a6b519faf39ac16e320e99683b236140b5c",
+    "closeout_post_merge_ci": "36198431012",
     "native_windows": "SUCCESS",
-    "jev": "PASSED: 15/15 hunks, zero findings, zero blocking findings",
-    "ocr": "PASSED: exact-range delegation, 3 files, 1 reviewable, 2 excluded unsupported_ext",
+    "jev": "PASSED: implementation 15/15 hunks and closeout 5/5 hunks, zero findings, zero blocking findings",
+    "ocr": "PASSED: exact-range delegation on implementation and closeout ranges",
     "deferred": "No external process.spawn authority exposed."
   }
 }

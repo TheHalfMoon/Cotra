@@ -2,7 +2,7 @@
   "id": "SG-000003",
   "title": "Read-only Git provider",
   "program": "COTRA-P02",
-  "state": "GRAIN",
+  "state": "CLOSED",
   "risk": "medium",
   "created": "2026-09-24",
   "base": "7d4003a1b6a82cac577c77e91b7d2606f49733f4",

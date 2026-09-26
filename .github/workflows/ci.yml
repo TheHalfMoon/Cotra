@@ -61,16 +61,55 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Diff check
         run: git diff --check
-      - name: Validate SpecGrain JSON
+      - name: Validate SpecGrain JSON and canonical evidence
         shell: python
         run: |
           import json
+          import re
           from pathlib import Path
+
           specs = sorted(Path(".specgrain/specs").glob("*.json"))
           assert specs, "no SpecGrain files"
+
+          ledger_path = Path(".specgrain/canonical-evidence.json")
+          assert ledger_path.is_file(), "missing canonical evidence ledger"
+          ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+          assert ledger.get("schema_version") == 1
+          assert set(ledger.get("state_semantics", {})) == {"GRAIN", "PROVEN", "CLOSED"}
+          evidence = ledger.get("grains", {})
+
+          spec_ids = set()
+          closed_ids = set()
+          sha40 = re.compile(r"^[0-9a-f]{40}$")
+          run_id = re.compile(r"^[0-9]+$")
+
           for path in specs:
               data = json.loads(path.read_text(encoding="utf-8"))
-              assert data["id"].startswith("SG-")
+              grain_id = data["id"]
+              assert grain_id.startswith("SG-")
+              assert grain_id not in spec_ids, f"duplicate SpecGrain id: {grain_id}"
+              spec_ids.add(grain_id)
               assert data["state"] in {"GRAIN", "PROVEN", "CLOSED"}
               assert data.get("acceptance")
-          print(f"validated {len(specs)} SpecGrain files")
+
+              if data["state"] == "CLOSED":
+                  closed_ids.add(grain_id)
+                  item = evidence.get(grain_id)
+                  assert item, f"CLOSED grain lacks canonical evidence: {grain_id}"
+                  assert isinstance(item.get("implementation_pr"), int) and item["implementation_pr"] > 0
+                  assert sha40.fullmatch(item.get("qualified_head", "")), f"invalid qualified_head: {grain_id}"
+                  assert sha40.fullmatch(item.get("merge_sha", "")), f"invalid merge_sha: {grain_id}"
+                  assert run_id.fullmatch(str(item.get("pre_merge_ci", ""))), f"invalid pre_merge_ci: {grain_id}"
+                  assert run_id.fullmatch(str(item.get("post_merge_ci", ""))), f"invalid post_merge_ci: {grain_id}"
+                  assert item.get("unresolved_review_threads") == 0, f"blocking review history recorded: {grain_id}"
+
+          unknown = set(evidence) - spec_ids
+          assert not unknown, f"canonical evidence refers to missing SpecGrain(s): {sorted(unknown)}"
+          assert closed_ids == set(evidence), "ledger and CLOSED SpecGrain set must match exactly"
+
+          current = Path("docs/canonical/CURRENT.md").read_text(encoding="utf-8")
+          assert "Governance snapshot base:" in current
+          assert "Canonical main:" not in current, "CURRENT must not self-reference its eventual merge SHA"
+          assert "chore/sg-000009a-closeout" not in current, "stale closeout branch remains in CURRENT"
+
+          print(f"validated {len(specs)} SpecGrain files and {len(evidence)} CLOSED evidence records")

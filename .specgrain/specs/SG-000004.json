@@ -2,7 +2,7 @@
   "id": "SG-000004",
   "title": "Secure MCP Tunnel supervisor and credential isolation",
   "program": "COTRA-P03",
-  "state": "GRAIN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-24",
   "base": "527a5e69e453fa740a754c4f037dbb1b2764c917",
