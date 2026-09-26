@@ -2439,11 +2439,7 @@ mod contained_launch_tests {
     }
 
     #[test]
-    fn private_descendant_primary_child() {
-        if std::env::args().any(|argument| argument == "--exact") {
-            return;
-        }
-    }
+    fn private_descendant_primary_child() {}
 
     #[test]
     fn private_output_descendant() {
