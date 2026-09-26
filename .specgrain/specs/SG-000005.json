@@ -9,11 +9,48 @@
   "dependencies": ["SG-000002", "SG-000004"],
   "objective": "Create the internal process execution contract and fail-closed workspace/environment validation required before any process or PowerShell capability may be exposed through MCP.",
   "scope": {
-    "include": ["internal ExecutionPlan contract", "absolute executable validation", "workspace-bound cwd validation", "argv validation", "secret-free child environment construction", "output/time/concurrency limit contract", "Windows containment strategy record", "negative security tests"],
-    "exclude": ["MCP process.spawn tool", "PowerShell tool", "actual arbitrary child process launch", "network authority", "elevation", "UI automation", "approval bypass", "AppContainer profile installation"]
+    "include": [
+      "internal ExecutionPlan contract",
+      "absolute executable validation",
+      "workspace-bound cwd validation",
+      "argv validation",
+      "secret-free child environment construction",
+      "output/time/concurrency limit contract",
+      "Windows containment strategy record",
+      "negative security tests"
+    ],
+    "exclude": [
+      "MCP process.spawn tool",
+      "PowerShell tool",
+      "actual arbitrary child process launch",
+      "network authority",
+      "elevation",
+      "UI automation",
+      "approval bypass",
+      "AppContainer profile installation"
+    ]
   },
-  "authority_delta": {"filesystem": "No new external authority", "process": "No new MCP process authority; internal planning/validation only", "network": "None", "browser": "None", "ui_input": "None", "secrets": "Defines non-inheritance contract; no secret access", "approval": "No change", "privileged": "None"},
-  "invariants": ["process.spawn remains denied by policy and absent from the MCP tool surface", "PowerShell remains absent from the MCP tool surface", "execution cwd must resolve inside the selected workspace", "executable must be an absolute existing file for this foundation", "argv cannot contain NUL bytes", "secret-like environment variables and Cotra/tunnel authority variables are not propagated", "execution limits are explicit and bounded", "Job Objects are treated as lifecycle controls, not a security sandbox", "Windows AppContainer/restricted-token containment must be proven before arbitrary execution authority is enabled"],
+  "authority_delta": {
+    "filesystem": "No new external authority",
+    "process": "No new MCP process authority; internal planning/validation only",
+    "network": "None",
+    "browser": "None",
+    "ui_input": "None",
+    "secrets": "Defines non-inheritance contract; no secret access",
+    "approval": "No change",
+    "privileged": "None"
+  },
+  "invariants": [
+    "process.spawn remains denied by policy and absent from the MCP tool surface",
+    "PowerShell remains absent from the MCP tool surface",
+    "execution cwd must resolve inside the selected workspace",
+    "executable must be an absolute existing file for this foundation",
+    "argv cannot contain NUL bytes",
+    "secret-like environment variables and Cotra/tunnel authority variables are not propagated",
+    "execution limits are explicit and bounded",
+    "Job Objects are treated as lifecycle controls, not a security sandbox",
+    "Windows AppContainer/restricted-token containment must be proven before arbitrary execution authority is enabled"
+  ],
   "acceptance": [
     {"id": "A1", "claim": "ExecutionPlan validation is deterministic and fail-closed."},
     {"id": "A2", "claim": "Out-of-workspace cwd and relative/non-file executables are rejected."},
@@ -21,7 +58,23 @@
     {"id": "A4", "claim": "process.spawn and PowerShell remain policy-denied and unregistered in MCP."},
     {"id": "A5", "claim": "Windows and Ubuntu exact-head CI pass."}
   ],
-  "required_tests": ["cwd workspace escape rejection", "relative executable rejection", "missing executable rejection", "NUL argv rejection", "secret environment stripping", "bounded limits validation", "process.spawn remains denied", "Windows native CI", "Ubuntu CI"],
-  "review": {"diffcipline": true, "jev_semantic_review": true, "alibaba_open_code_review": "where integrated", "security_review": true, "exact_head_ci": true},
+  "required_tests": [
+    "cwd workspace escape rejection",
+    "relative executable rejection",
+    "missing executable rejection",
+    "NUL argv rejection",
+    "secret environment stripping",
+    "bounded limits validation",
+    "process.spawn remains denied",
+    "Windows native CI",
+    "Ubuntu CI"
+  ],
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": "where integrated",
+    "security_review": true,
+    "exact_head_ci": true
+  },
   "done_when": "The internal execution contract is qualified and merged without exposing execution authority. The next grain may implement Windows containment against this contract."
 }
