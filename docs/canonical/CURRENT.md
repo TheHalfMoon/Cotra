@@ -61,6 +61,7 @@ Implementation branch:
 The implementation candidate adds exactly one public EXECUTE capability:
 - `process.spawn` / `spawn`;
 - executable and argv are separate typed fields; no raw command string;
+- on Windows, SG-000010 authorizes only the exact qualified `%SystemRoot%\\System32\\whoami.exe` executable; generic executable-registry authority is deferred;
 - cwd resolves inside the selected workspace;
 - caller environment overrides are absent;
 - stdin policy is null/no-input only;
@@ -69,10 +70,17 @@ The implementation candidate adds exactly one public EXECUTE capability:
 - every execution requires fresh local approval bound to the exact normalized execution plan;
 - execution reuses the existing zero-capability AppContainer + Job containment path and verified termination semantics.
 
+The narrow executable policy prevents `cmd.exe`, PowerShell, or arbitrary interpreters from bypassing the shell/PowerShell authority separation through argv. A broader executable registry requires a successor authority grain.
+
+The generic contained executor's post-primary-exit pipe drain is not considered qualified for arbitrary descendant-producing executables in SG-000010. Descendant-aware post-exit drain/termination hardening is a prerequisite before executable-registry widening.
+
 The implementation is not PROVEN until exact-head native Windows, portable CI, Jev, Alibaba OCR, security review, merge, and post-merge evidence are complete.
 
 Still denied / absent in SG-000010:
+- generic executable-registry authority;
 - `powershell.run`;
+- direct PowerShell executable authority through `process.spawn`;
+- `cmd.exe`/raw shell execution;
 - raw shell command strings;
 - caller-provided process environment overrides;
 - process stdin payload injection;
@@ -84,7 +92,7 @@ Still denied / absent in SG-000010:
 - elevation;
 - Git mutation.
 
-The next P05 unit after SG-000010 must be derived from the canonical delivery plan and SG-000010 closeout evidence. Bounded PowerShell and further protected-state hardening remain successor concerns, not current authority.
+The next P05 unit after SG-000010 must be derived from the canonical delivery plan and SG-000010 closeout evidence. Descendant-aware process lifecycle hardening, executable-registry widening, bounded PowerShell, and further protected-state hardening remain successor concerns, not current authority.
 
 Architecture: Cotra is standalone; Kernux is not a dependency.
 
