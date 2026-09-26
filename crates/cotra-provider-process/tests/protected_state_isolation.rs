@@ -9,7 +9,8 @@ const SENTINEL_DIR: &str = "sg-000012-qualification";
 const SENTINEL_FILE: &str = "protected-state-sentinel";
 
 fn required_env(name: &str) -> String {
-    std::env::var(name).unwrap_or_else(|_| panic!("required Windows environment variable is unavailable: {name}"))
+    std::env::var(name)
+        .unwrap_or_else(|_| panic!("required Windows environment variable is unavailable: {name}"))
 }
 
 fn qualification_env(workspace: &std::path::Path) -> BTreeMap<String, String> {
@@ -77,7 +78,10 @@ fn protected_state_child() {
     let read = std::io::stdin()
         .read(&mut byte)
         .expect("read contained stdin");
-    assert_eq!(read, 0, "contained child inherited a readable stdin authority channel");
+    assert_eq!(
+        read, 0,
+        "contained child inherited a readable stdin authority channel"
+    );
 
     if std::fs::read(sentinel_path()).is_ok() {
         panic!("restricted AppContainer child could read Cotra protected state");
@@ -109,7 +113,10 @@ fn windows_restricted_child_cannot_read_cotra_protected_state() {
     let sentinel = protected_dir.join(SENTINEL_FILE);
     std::fs::write(&sentinel, b"COTRA-SG-000012-PROTECTED-STATE")
         .expect("seed protected-state sentinel");
-    assert!(sentinel.is_file(), "parent failed to create protected-state sentinel");
+    assert!(
+        sentinel.is_file(),
+        "parent failed to create protected-state sentinel"
+    );
 
     let executable = std::env::current_exe().expect("integration-test executable");
     let env = qualification_env(&workspace);
