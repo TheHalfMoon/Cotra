@@ -551,9 +551,9 @@ fn content(request: &RequestEnvelope) -> Result<&str, ProviderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cotra_approval::{ApprovalError, ApprovalPrompt};
     #[cfg(windows)]
     use cotra_approval::test_support::FixedApprovalBroker;
+    use cotra_approval::{ApprovalError, ApprovalPrompt};
     use serde_json::json;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -659,7 +659,9 @@ mod tests {
         #[cfg(windows)]
         let executable = {
             let system_root = std::env::var_os("SystemRoot").expect("SystemRoot");
-            PathBuf::from(system_root).join("System32").join("whoami.exe")
+            PathBuf::from(system_root)
+                .join("System32")
+                .join("whoami.exe")
         };
         #[cfg(not(windows))]
         let executable = std::env::current_exe().expect("test executable");
