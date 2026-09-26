@@ -5,8 +5,7 @@ use cotra_policy::{PolicyEngine, Workspace, POLICY_REVISION};
 use cotra_provider_fs::{FsProvider, ProviderError};
 use cotra_provider_git::{GitProvider, GitProviderError};
 use cotra_provider_process::{
-    build_execution_plan, execute_contained, ExecutionLimits, OutputStream,
-    PrivateExecutionFailure,
+    build_execution_plan, execute_contained, ExecutionLimits, OutputStream, PrivateExecutionFailure,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -395,7 +394,10 @@ fn process_spawn(
     }))
 }
 
-fn process_approval_digest(workspace: &Workspace, plan: &cotra_provider_process::ExecutionPlan) -> String {
+fn process_approval_digest(
+    workspace: &Workspace,
+    plan: &cotra_provider_process::ExecutionPlan,
+) -> String {
     let mut hasher = Sha256::new();
     digest_field(&mut hasher, b"COTRA_PROCESS_APPROVAL_V1");
     digest_field(&mut hasher, workspace.id.as_bytes());
@@ -654,7 +656,9 @@ mod tests {
         let policy = PolicyEngine::new(vec![workspace.clone()]).expect("policy");
         let executable = std::env::current_exe().expect("test executable");
         let request = process_request(&workspace, executable);
-        policy.authorize(&request).expect("policy accepts bounded request");
+        policy
+            .authorize(&request)
+            .expect("policy accepts bounded request");
 
         let denied = dispatch(&policy, &workspace, &DenyBroker, &request)
             .expect_err("denied approval must prevent execution");
@@ -710,9 +714,13 @@ mod tests {
         };
         let policy = PolicyEngine::new(vec![workspace.clone()]).expect("policy");
         let system_root = std::env::var_os("SystemRoot").expect("SystemRoot");
-        let executable = PathBuf::from(system_root).join("System32").join("whoami.exe");
+        let executable = PathBuf::from(system_root)
+            .join("System32")
+            .join("whoami.exe");
         let request = process_request(&workspace, executable);
-        policy.authorize(&request).expect("policy accepts public fixture");
+        policy
+            .authorize(&request)
+            .expect("policy accepts public fixture");
 
         let result = dispatch(
             &policy,
@@ -722,7 +730,9 @@ mod tests {
         )
         .expect("approved public process.spawn");
         assert_eq!(result["exit_code"], 0);
-        assert!(result["stdout"].as_str().is_some_and(|value| !value.is_empty()));
+        assert!(result["stdout"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
         assert_eq!(result["stderr"], "");
         assert_eq!(result["appcontainer_verified"], true);
         assert_eq!(result["assigned_to_job_before_resume"], true);

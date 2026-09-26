@@ -368,13 +368,17 @@ fn enforce_sg000010_executable_policy(executable: &str) -> Result<(), PolicyErro
             "SystemRoot is unavailable for SG-000010 executable policy",
         )
     })?;
-    let allowed = std::fs::canonicalize(PathBuf::from(system_root).join("System32").join("whoami.exe"))
-        .map_err(|error| {
-            PolicyError::new(
-                FailureCode::ProviderUnavailable,
-                format!("SG-000010 whoami.exe fixture could not be resolved: {error}"),
-            )
-        })?;
+    let allowed = std::fs::canonicalize(
+        PathBuf::from(system_root)
+            .join("System32")
+            .join("whoami.exe"),
+    )
+    .map_err(|error| {
+        PolicyError::new(
+            FailureCode::ProviderUnavailable,
+            format!("SG-000010 whoami.exe fixture could not be resolved: {error}"),
+        )
+    })?;
     if requested != allowed {
         return Err(PolicyError::new(
             FailureCode::CapabilityDenied,
@@ -652,8 +656,8 @@ mod tests {
     #[test]
     fn process_spawn_rejects_unqualified_shell_and_powershell_executables() {
         let root = temp_root();
-        let system32 = PathBuf::from(std::env::var_os("SystemRoot").expect("SystemRoot"))
-            .join("System32");
+        let system32 =
+            PathBuf::from(std::env::var_os("SystemRoot").expect("SystemRoot")).join("System32");
         for name in ["cmd.exe", "WindowsPowerShell\\v1.0\\powershell.exe"] {
             let request = process_request(&system32.join(name));
             let error = engine(&root)
