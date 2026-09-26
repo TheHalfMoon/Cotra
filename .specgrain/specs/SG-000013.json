@@ -2,10 +2,16 @@
   "id": "SG-000013",
   "title": "Private bounded PowerShell containment qualification",
   "program": "COTRA-P05",
-  "state": "GRAIN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-26",
   "base": "197e6171e71dc3641b95751da848e4f9c1cf41fc",
+  "qualified_head": "74b4a91d7b8e7f582a0df0fc814526658795514f",
+  "implementation_base": "6b4ec228619292271dd77700f0c7d966c219124c",
+  "implementation_merge": "ddfcb4c9d5f06af446d44e031eb96bd70e4424d9",
+  "pre_merge_ci": "36258473411",
+  "pre_merge_review_gates": "36258472190",
+  "post_merge_ci": "36258601073",
   "dependencies": [
     "SG-000002",
     "SG-000004",
@@ -54,11 +60,11 @@
   },
   "authority_delta": {
     "filesystem": "None; provider-private qualification only and cwd remains inside an already trusted workspace",
-    "process": "No new public process authority; adds only a provider-private fixed PowerShell qualification mode",
+    "process": "No new public process authority; native qualification proved inbox Windows PowerShell can execute inside the existing containment boundary",
     "network": "None; AppContainer receives zero capabilities and PowerShell remoting is excluded",
     "browser": "None",
     "ui_input": "None",
-    "secrets": "No new secret access; Cotra/tunnel/API secret-like variables remain excluded from the child environment",
+    "secrets": "No new secret access; Cotra/tunnel/API secret-like variables remained excluded from the child environment",
     "approval": "No public approval surface change in this qualification grain",
     "privileged": "None"
   },
@@ -115,5 +121,20 @@
     "security_review": true,
     "exact_head_ci": true
   },
-  "done_when": "The provider-private bounded PowerShell containment path is merged with exact-head and post-merge verification on native Windows, the existing process and protected-state boundaries remain green, and no public PowerShell authority has been introduced."
+  "done_when": "The provider-private bounded PowerShell containment path is merged with exact-head and post-merge verification on native Windows, the existing process and protected-state boundaries remain green, and no public PowerShell authority has been introduced.",
+  "canonical_evidence": {
+    "implementation_pr": 27,
+    "implementation_base": "6b4ec228619292271dd77700f0c7d966c219124c",
+    "qualified_head": "74b4a91d7b8e7f582a0df0fc814526658795514f",
+    "pre_merge_ci": "36258473411",
+    "pre_merge_review_gates": "36258472190",
+    "merge_sha": "ddfcb4c9d5f06af446d44e031eb96bd70e4424d9",
+    "post_merge_ci": "36258601073",
+    "native_windows": "SUCCESS: four SG-000013 integration tests passed for deterministic PowerShell success, verified timeout, verified stdout limit, and verified stderr limit; existing protected-state and public process regressions also remained green.",
+    "jev": "PASSED: 2/2 hunks, zero findings, zero blocking findings",
+    "ocr": "PASSED: Open Code Review v1.12.9 exact-range delegation, 2 files total, 1 reviewable, 1 excluded unsupported_ext and manually reviewed",
+    "security_review": "PASS on exact qualified head; no public authority delta",
+    "unresolved_review_threads": 0,
+    "authority_boundary": "No new public authority. Public powershell.run remains absent and Windows public process.spawn remains restricted to the exact SG-000010-qualified %SystemRoot%\\System32\\whoami.exe target; generic executable-registry widening, process network, detached/background execution, public kill, Git mutation, browser/UI automation, elevation, and approval bypass/reuse remain absent."
+  }
 }
