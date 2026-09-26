@@ -9,11 +9,41 @@
   "dependencies": ["SG-000005", "SG-000006"],
   "objective": "Prove on native Windows CI that Cotra can create a Job Object, set JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE through extended limit information, and close the handle without exposing process execution authority.",
   "scope": {
-    "include": ["CreateJobObjectW probe", "JOBOBJECT_EXTENDED_LIMIT_INFORMATION ABI representation", "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE configuration", "SetInformationJobObject probe", "CloseHandle cleanup", "Windows-native lifecycle test"],
-    "exclude": ["child process creation", "AssignProcessToJobObject", "process.spawn MCP tool", "PowerShell", "AppContainer child launch", "network authority", "elevation", "UI automation"]
+    "include": [
+      "CreateJobObjectW probe",
+      "JOBOBJECT_EXTENDED_LIMIT_INFORMATION ABI representation",
+      "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE configuration",
+      "SetInformationJobObject probe",
+      "CloseHandle cleanup",
+      "Windows-native lifecycle test"
+    ],
+    "exclude": [
+      "child process creation",
+      "AssignProcessToJobObject",
+      "process.spawn MCP tool",
+      "PowerShell",
+      "AppContainer child launch",
+      "network authority",
+      "elevation",
+      "UI automation"
+    ]
   },
-  "authority_delta": {"filesystem": "None", "process": "No child launch and no external process authority", "network": "None", "browser": "None", "ui_input": "None", "secrets": "None", "approval": "No change", "privileged": "None"},
-  "invariants": ["Job Objects are treated as lifecycle/resource controls and never as the sole sandbox", "The probe assigns no process to the Job Object", "The probe closes the Job Object handle on success and after configuration failure", "process.spawn and PowerShell remain absent from policy and MCP"],
+  "authority_delta": {
+    "filesystem": "None",
+    "process": "No child launch and no external process authority",
+    "network": "None",
+    "browser": "None",
+    "ui_input": "None",
+    "secrets": "None",
+    "approval": "No change",
+    "privileged": "None"
+  },
+  "invariants": [
+    "Job Objects are treated as lifecycle/resource controls and never as the sole sandbox",
+    "The probe assigns no process to the Job Object",
+    "The probe closes the Job Object handle on success and after configuration failure",
+    "process.spawn and PowerShell remain absent from policy and MCP"
+  ],
   "acceptance": [
     {"id": "A1", "claim": "Native Windows test creates an unnamed Job Object."},
     {"id": "A2", "claim": "Native Windows test sets JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE using extended limit information."},
@@ -21,6 +51,12 @@
     {"id": "A4", "claim": "Non-Windows builds remain cfg-isolated from Win32 linkage."},
     {"id": "A5", "claim": "Exact-head Windows/Ubuntu CI and Governance pass."}
   ],
-  "review": {"diffcipline": true, "jev_semantic_review": true, "alibaba_open_code_review": "where integrated", "security_review": true, "exact_head_ci": true},
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": "where integrated",
+    "security_review": true,
+    "exact_head_ci": true
+  },
   "done_when": "The Job Object lifecycle primitive is proven on Windows CI and merged with post-merge verification. Process assignment and child launch remain successor grains."
 }
