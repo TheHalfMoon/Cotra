@@ -17,3 +17,6 @@ cotra-provider-process = { path = "../cotra-provider-process" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+
+[dev-dependencies]
+cotra-approval = { path = "../cotra-approval", features = ["test-support"] }
