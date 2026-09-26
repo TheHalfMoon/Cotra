@@ -1,4 +1,4 @@
-name: SG-000010 Argv Approval Patch Once
+name: SG-000010 Qualification Repair Once
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-once:
+  repair-once:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -18,53 +18,39 @@ jobs:
         with:
           ref: feat/sg-000010-implementation
           fetch-depth: 0
-      - name: Narrow Windows argv authority and make approval display exact
+      - name: Repair exact-head qualification and remove this workflow
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          policy = Path('crates/cotra-policy/src/lib.rs')
-          p = policy.read_text(encoding='utf-8')
-          anchor = '''    if argv.len() > MAX_PROCESS_ARGV_ITEMS {
-              return Err(PolicyError::new(
-                  FailureCode::InvalidRequest,
-                  format!("process.spawn argv exceeds {MAX_PROCESS_ARGV_ITEMS} items"),
-              ));
-          }
-          '''
-          insertion = anchor + '''
-          #[cfg(windows)]
-          if !argv.is_empty() {
-              return Err(PolicyError::new(
-                  FailureCode::CapabilityDenied,
-                  "SG-000010 Windows process.spawn permits only the qualified no-argument whoami.exe fixture; argv authority widening is a successor grain",
-              ));
-          }
-          '''
-          if anchor not in p:
-              raise SystemExit('policy argv anchor not found')
-          p = p.replace(anchor, insertion, 1)
-          p = p.replace('''                "argv": ["--version"],''', '''                "argv": [],''', 1)
-
-          test_anchor = '''        for name in ["cmd.exe", "WindowsPowerShell\\\\v1.0\\\\powershell.exe"] {'''
-          test_insert = '''        let mut argv_request = process_request(&system32.join("whoami.exe"));
-          argv_request.arguments["argv"] = json!(["/user"]);
-          let argv_error = engine(&root)
-              .authorize(&argv_request)
-              .expect_err("SG-000010 must not widen argv authority before successor qualification");
-          assert_eq!(argv_error.code, FailureCode::CapabilityDenied);
-
-          for name in ["cmd.exe", "WindowsPowerShell\\\\v1.0\\\\powershell.exe"] {'''
-          if test_anchor not in p:
-              raise SystemExit('policy Windows test anchor not found')
-          p = p.replace(test_anchor, test_insert, 1)
-          policy.write_text(p, encoding='utf-8')
-
           daemon = Path('crates/cotrad/src/main.rs')
           d = daemon.read_text(encoding='utf-8')
-          old = '''        summary: format!(
+
+          old_import = '    use cotra_approval::{test_support::FixedApprovalBroker, ApprovalError, ApprovalPrompt};'
+          new_import = '''    use cotra_approval::{ApprovalError, ApprovalPrompt};
+              #[cfg(windows)]
+              use cotra_approval::test_support::FixedApprovalBroker;'''
+          if old_import not in d:
+              raise SystemExit('cotrad test import anchor not found')
+          d = d.replace(old_import, new_import, 1)
+
+          old_executable = '''        let executable = std::env::current_exe().expect("test executable");
+              let request = process_request(&workspace, executable);'''
+          new_executable = '''        #[cfg(windows)]
+              let executable = {
+                  let system_root = std::env::var_os("SystemRoot").expect("SystemRoot");
+                  PathBuf::from(system_root).join("System32").join("whoami.exe")
+              };
+              #[cfg(not(windows))]
+              let executable = std::env::current_exe().expect("test executable");
+              let request = process_request(&workspace, executable);'''
+          if old_executable not in d:
+              raise SystemExit('cotrad approval test executable anchor not found')
+          d = d.replace(old_executable, new_executable, 1)
+
+          old_summary = '''        summary: format!(
               "argv={} cwd={} timeout={}ms stdout_limit={} stderr_limit={} stdin=null network=NONE",
               plan.argv.len(),
               plan.cwd.display(),
@@ -72,7 +58,7 @@ jobs:
               plan.limits.stdout_bytes,
               plan.limits.stderr_bytes
           ),'''
-          new = '''        summary: format!(
+          new_summary = '''        summary: format!(
               "argv={:?} cwd={} timeout={}ms stdout_limit={} stderr_limit={} stdin=null network=NONE",
               plan.argv,
               plan.cwd.display(),
@@ -80,16 +66,17 @@ jobs:
               plan.limits.stdout_bytes,
               plan.limits.stderr_bytes
           ),'''
-          if old not in d:
-              raise SystemExit('approval summary anchor not found')
-          d = d.replace(old, new, 1)
+          if old_summary not in d:
+              raise SystemExit('cotrad approval summary anchor not found')
+          d = d.replace(old_summary, new_summary, 1)
           daemon.write_text(d, encoding='utf-8')
           PY
+
           cargo fmt --all
           rm .github/workflows/sg10-argv-approval-once.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --check
-          git commit -m 'fix: keep SG-000010 argv authority explicit'
+          git commit -m 'fix: align SG-000010 qualification with narrowed authority'
           git push origin HEAD:feat/sg-000010-implementation
