@@ -277,7 +277,10 @@ fn reject_unknown_process_arguments(arguments: &Map<String, Value>) -> Result<()
         "stdin_policy",
         "network_class",
     ];
-    if let Some(key) = arguments.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
+    if let Some(key) = arguments
+        .keys()
+        .find(|key| !ALLOWED.contains(&key.as_str()))
+    {
         return Err(PolicyError::new(
             FailureCode::InvalidRequest,
             format!("process.spawn does not accept argument field: {key}"),
@@ -286,7 +289,10 @@ fn reject_unknown_process_arguments(arguments: &Map<String, Value>) -> Result<()
     Ok(())
 }
 
-fn required_string<'a>(arguments: &'a Map<String, Value>, key: &str) -> Result<&'a str, PolicyError> {
+fn required_string<'a>(
+    arguments: &'a Map<String, Value>,
+    key: &str,
+) -> Result<&'a str, PolicyError> {
     arguments.get(key).and_then(Value::as_str).ok_or_else(|| {
         PolicyError::new(
             FailureCode::InvalidRequest,
@@ -343,6 +349,43 @@ fn validate_process_executable(executable: &str) -> Result<(), PolicyError> {
             "process.spawn executable must be an absolute local path",
         ));
     }
+
+    enforce_sg000010_executable_policy(executable)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn enforce_sg000010_executable_policy(executable: &str) -> Result<(), PolicyError> {
+    let requested = std::fs::canonicalize(executable).map_err(|error| {
+        PolicyError::new(
+            FailureCode::InvalidRequest,
+            format!("process.spawn executable could not be resolved: {error}"),
+        )
+    })?;
+    let system_root = std::env::var_os("SystemRoot").ok_or_else(|| {
+        PolicyError::new(
+            FailureCode::ProviderUnavailable,
+            "SystemRoot is unavailable for SG-000010 executable policy",
+        )
+    })?;
+    let allowed = std::fs::canonicalize(PathBuf::from(system_root).join("System32").join("whoami.exe"))
+        .map_err(|error| {
+            PolicyError::new(
+                FailureCode::ProviderUnavailable,
+                format!("SG-000010 whoami.exe fixture could not be resolved: {error}"),
+            )
+        })?;
+    if requested != allowed {
+        return Err(PolicyError::new(
+            FailureCode::CapabilityDenied,
+            "SG-000010 process.spawn permits only the qualified Windows whoami.exe executable; executable registry widening is a successor authority grain",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn enforce_sg000010_executable_policy(_executable: &str) -> Result<(), PolicyError> {
     Ok(())
 }
 
@@ -441,6 +484,18 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
+    fn process_fixture_executable() -> PathBuf {
+        PathBuf::from(std::env::var_os("SystemRoot").expect("SystemRoot"))
+            .join("System32")
+            .join("whoami.exe")
+    }
+
+    #[cfg(not(windows))]
+    fn process_fixture_executable() -> PathBuf {
+        std::env::current_exe().expect("current executable")
+    }
+
     fn engine(root: &Path) -> PolicyEngine {
         PolicyEngine::new(vec![Workspace {
             id: "default".into(),
@@ -495,9 +550,11 @@ mod tests {
     #[test]
     fn authorizes_only_bounded_argv_process_spawn() {
         let root = temp_root();
-        let executable = std::env::current_exe().expect("current executable");
+        let executable = process_fixture_executable();
         let req = process_request(&executable);
-        engine(&root).authorize(&req).expect("bounded process.spawn");
+        engine(&root)
+            .authorize(&req)
+            .expect("bounded process.spawn");
 
         let mut wrong_operation = req.clone();
         wrong_operation.operation = "run".into();
@@ -519,13 +576,16 @@ mod tests {
     #[test]
     fn process_spawn_rejects_escape_shell_network_stdin_env_and_unbounded_inputs() {
         let root = temp_root();
-        let executable = std::env::current_exe().expect("current executable");
+        let executable = process_fixture_executable();
         let base = process_request(&executable);
 
         let mut relative_executable = base.clone();
         relative_executable.arguments["executable"] = json!("tool.exe");
         assert_eq!(
-            engine(&root).authorize(&relative_executable).unwrap_err().code,
+            engine(&root)
+                .authorize(&relative_executable)
+                .unwrap_err()
+                .code,
             FailureCode::InvalidRequest
         );
 
@@ -585,6 +645,22 @@ mod tests {
             FailureCode::InvalidRequest
         );
 
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn process_spawn_rejects_unqualified_shell_and_powershell_executables() {
+        let root = temp_root();
+        let system32 = PathBuf::from(std::env::var_os("SystemRoot").expect("SystemRoot"))
+            .join("System32");
+        for name in ["cmd.exe", "WindowsPowerShell\\v1.0\\powershell.exe"] {
+            let request = process_request(&system32.join(name));
+            let error = engine(&root)
+                .authorize(&request)
+                .expect_err("SG-000010 must not expose shell/interpreter authority");
+            assert_eq!(error.code, FailureCode::CapabilityDenied);
+        }
         let _ = std::fs::remove_dir_all(root);
     }
 }
