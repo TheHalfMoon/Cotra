@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_base": "00cab385bdce43562530646dce84be71e1ddfabd",
+  "snapshot_base": "6b24a810712c7ee1edfab714c672447606dc0b13",
   "state_semantics": {
     "GRAIN": "Authorized or active work packet whose acceptance is not yet canonically proven.",
     "PROVEN": "Acceptance and required qualification are proven, but canonical closeout/governance is not yet complete.",
@@ -152,6 +152,20 @@
       "post_merge_ci": "36253841733",
       "review_basis": "Exact-head genuine TypeSafe Jev 11/11 hunks with zero findings/blocking findings, Alibaba Open Code Review v1.12.9 exact-range delegation, manual security review of the excluded security note, native Windows descendant-retained-stdio qualification, SG-000009/009A/010 regressions, and zero unresolved review threads.",
       "unresolved_review_threads": 0,
+      "authority_boundary": "No new public authority. Windows public process.spawn remains restricted to the exact SG-000010-qualified %SystemRoot%\\System32\\whoami.exe target; generic executable-registry widening, PowerShell, process network, detached/background execution, and public kill remain absent."
+    },
+    "SG-000012": {
+      "implementation_pr": 24,
+      "implementation_base": "fb84a7fe8bab9589f29213eecdd346a306910fec",
+      "qualified_head": "2fa87c15a3a6f7d0fdc3cf06ed3015ccce0a039e",
+      "pre_merge_ci": "36255254224",
+      "pre_merge_review_gates": "36255253042",
+      "merge_sha": "6b24a810712c7ee1edfab714c672447606dc0b13",
+      "post_merge_ci": "36255431331",
+      "review_basis": "Exact-head genuine TypeSafe Jev 2/2 hunks with zero findings/blocking findings, Alibaba Open Code Review v1.12.9 exact-range delegation, manual security review of the excluded security note, native Windows protected-state negative-access qualification, SG-000009/009A/010/011 regressions, and zero unresolved review threads.",
+      "unresolved_review_threads": 0,
+      "native_windows": "SUCCESS: the zero-capability AppContainer child could not read the Cotra-owned LocalAppData sentinel, received no tested Cotra/API secret-like environment variables, observed NUL/EOF stdin rather than the cotrad authority channel, and reached verified Job quiescence.",
+      "acl_repair_required": false,
       "authority_boundary": "No new public authority. Windows public process.spawn remains restricted to the exact SG-000010-qualified %SystemRoot%\\System32\\whoami.exe target; generic executable-registry widening, PowerShell, process network, detached/background execution, and public kill remain absent."
     }
   }

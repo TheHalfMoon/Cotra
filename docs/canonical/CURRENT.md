@@ -1,8 +1,8 @@
 # Cotra Current Canonical Frontier
 
-Status: IMPLEMENTATION
+Status: GOVERNANCE_CLOSEOUT
 Date: 2026-09-26
-Governance snapshot base: 54b5b8ff39fe4188f09950d1db5c42e8823b19a6
+Governance snapshot base: 6b24a810712c7ee1edfab714c672447606dc0b13
 Evidence ledger: `.specgrain/canonical-evidence.json`
 
 `Governance snapshot base` records the canonical parent from which this snapshot was authored. It deliberately does not claim the eventual merge SHA of the commit containing this file.
@@ -17,53 +17,37 @@ The machine-readable evidence for every `CLOSED` grain is recorded in `.specgrai
 
 ## Closed canonical grains
 
-SG-000001 through SG-000011 are `CLOSED` and canonical.
+SG-000001 through SG-000011 are `CLOSED` and canonical on the snapshot base.
 
-SG-000011 closeout evidence:
-- qualified implementation head: `b6ca7106196e3d1c4771f46f311ec22a413eff49`;
-- implementation merge: `00cab385bdce43562530646dce84be71e1ddfabd`;
-- implementation exact-head CI: `36251790829` — 5/5 SUCCESS;
-- implementation Review Gates: `36251789043` — genuine Jev 11/11 hunks, zero findings/blocking findings; Alibaba Open Code Review exact-range delegation SUCCESS;
-- implementation post-merge CI: `36253841733` — 5/5 SUCCESS;
-- closeout exact head: `6797b994f937df46cdbda1720a7cd6a3fac57878`;
-- closeout exact-head CI: `36254155605` — 5/5 SUCCESS;
-- closeout Review Gates: `36254155073` — genuine Jev 7/7 hunks, zero findings/blocking findings; Alibaba Open Code Review exact-range delegation SUCCESS;
-- closeout merge: `54b5b8ff39fe4188f09950d1db5c42e8823b19a6`;
-- closeout post-merge CI: `36254286169` — 5/5 SUCCESS.
+SG-000012 is implemented, exact-head qualified, merged, and post-merge verified. This closeout candidate moves its machine state to `CLOSED` and records its canonical evidence. That state becomes canonically effective only after this governance-only closeout is exact-head qualified, merged normally, and passes post-merge CI.
 
-Canonical public process authority remains narrow:
-- `process.spawn` / `spawn` is argv-first;
-- Windows executable authority remains positively restricted to the exact SG-000010-qualified `%SystemRoot%\System32\whoami.exe` target;
-- cwd is workspace-bound;
-- caller environment overrides and stdin payloads are absent;
-- timeout/stdout/stderr are bounded;
-- `network_class=NONE` only;
-- every execution requires fresh local approval bound to the normalized plan;
-- execution uses zero-capability AppContainer containment, pre-resume Job membership, bounded post-primary-exit drain, and verified termination semantics.
+## SG-000012 implementation evidence
 
-Historical boundary: SG-000004 closed tunnel supervisor/credential isolation only; live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
+- implementation PR: `#24`;
+- implementation base: `fb84a7fe8bab9589f29213eecdd346a306910fec`;
+- qualified implementation head: `2fa87c15a3a6f7d0fdc3cf06ed3015ccce0a039e`;
+- implementation exact-head CI: `36255254224` — 5/5 SUCCESS;
+- implementation Review Gates: `36255253042` — SUCCESS;
+- genuine TypeSafe Jev: 2/2 hunks, zero findings, zero blocking findings;
+- Alibaba Open Code Review v1.12.9: exact-range delegation SUCCESS, 2 files total, 1 reviewable, 1 excluded security note manually reviewed;
+- implementation merge: `6b24a810712c7ee1edfab714c672447606dc0b13`;
+- implementation post-merge CI: `36255431331` — 5/5 SUCCESS, including native Windows;
+- unresolved implementation review threads: 0.
 
-## Active frontier
+Qualified SG-000012 behavior:
+- a zero-capability AppContainer child could not read the Cotra-owned LocalAppData protected-state sentinel;
+- tested Cotra/API secret-like variables were absent from the contained child environment;
+- contained stdin was NUL/EOF rather than the cotra-mcp -> cotrad authority channel;
+- AppContainer identity, pre-resume Job membership, and final Job quiescence remained verified;
+- no Cotra-owned ACL repair was required;
+- no trusted workspace or arbitrary user-file ACL was modified;
+- SG-000009, SG-000009A, SG-000010, and SG-000011 regressions remained green.
 
-SG-000012 — Restricted-child protected-state isolation qualification
+## Canonical public process boundary retained
 
-Branch:
-`feat/sg-000012-protected-state-isolation`
+No public authority widened in SG-000012.
 
-This is the next lawful COTRA-P05 unit because the canonical P05 exit criteria require Cotra protected state and the current authority channel to remain inaccessible to a restricted child where the architecture supports that proof. Broader executable or PowerShell authority must not be introduced before this boundary is qualified.
-
-SG-000012 must prove on native Windows:
-- a provider-private zero-capability AppContainer child cannot read a Cotra-owned protected-state sentinel under the parent user's LocalAppData Cotra state boundary;
-- child environment inheritance remains free of Cotra/tunnel secret-like variables;
-- child handle inheritance remains limited to NUL stdin plus dedicated stdout/stderr handles;
-- the current cotra-mcp to cotrad stdio authority channel is not inherited by process.spawn children;
-- if the default Cotra-owned state ACL boundary is insufficient, only Cotra-owned state is hardened and native requalification proves denial;
-- no user workspace or arbitrary user-file ACL is modified;
-- SG-000009, SG-000009A, SG-000010, and SG-000011 regressions remain green.
-
-## Authority boundary retained during SG-000012
-
-No new public process, filesystem, network, browser/UI, Git, approval, or privileged authority is authorized by this grain.
+Windows public `process.spawn` remains positively restricted to the exact SG-000010-qualified `%SystemRoot%\System32\whoami.exe` target.
 
 Still denied or absent:
 - generic executable-registry widening;
@@ -81,7 +65,13 @@ Still denied or absent:
 - elevation;
 - approval bypass or persistent approval reuse.
 
-Only after SG-000012 is `CLOSED` may repository truth determine the next P05 authority unit, including positive executable-registry widening or bounded PowerShell qualification.
+Historical boundary: SG-000004 closed tunnel supervisor/credential isolation only; live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
+
+## Active frontier
+
+SG-000012 canonical closeout only.
+
+No successor authority is canonical yet. After this closeout merges and its post-merge CI succeeds, repository truth must determine the next lawful COTRA-P05 unit from the canonical architecture/delivery plan and remaining P05 exit criteria. Likely candidates include positive executable-registry widening or bounded PowerShell, but neither authority is granted by this closeout.
 
 Architecture: Cotra is standalone; Kernux is not a dependency.
 

@@ -2,10 +2,16 @@
   "id": "SG-000012",
   "title": "Restricted-child protected-state isolation qualification",
   "program": "COTRA-P05",
-  "state": "GRAIN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-26",
   "base": "54b5b8ff39fe4188f09950d1db5c42e8823b19a6",
+  "qualified_head": "2fa87c15a3a6f7d0fdc3cf06ed3015ccce0a039e",
+  "implementation_base": "fb84a7fe8bab9589f29213eecdd346a306910fec",
+  "implementation_merge": "6b24a810712c7ee1edfab714c672447606dc0b13",
+  "pre_merge_ci": "36255254224",
+  "pre_merge_review_gates": "36255253042",
+  "post_merge_ci": "36255431331",
   "dependencies": [
     "SG-000004",
     "SG-000009",
@@ -44,12 +50,12 @@
     ]
   },
   "authority_delta": {
-    "filesystem": "No public filesystem authority. Qualification may harden Cotra-owned protected state only; trusted workspace ACLs and arbitrary user files remain untouched.",
+    "filesystem": "No public filesystem authority. Native evidence proved the existing Cotra-owned LocalAppData boundary denied the zero-capability AppContainer child, so no ACL repair was required.",
     "process": "No new public process authority; provider-private isolation qualification only",
     "network": "None",
     "browser": "None",
     "ui_input": "None",
-    "secrets": "No new secret access; this grain proves restricted-child non-access to Cotra-owned protected state and preserves secret-free child environments",
+    "secrets": "No new secret access; native qualification proved tested Cotra/API secret-like variables absent from the child environment",
     "approval": "No change",
     "privileged": "No new privileged capability"
   },
@@ -83,7 +89,7 @@
     },
     {
       "id": "A5",
-      "claim": "If the default Cotra-owned protected-state ACL permits AppContainer read access, the grain hardens only that Cotra-owned state boundary and native Windows requalification proves denial; no workspace or arbitrary-user-file ACL mutation is introduced."
+      "claim": "Native Windows proved the existing Cotra-owned state boundary denied the AppContainer read, so no ACL repair was required and no workspace or arbitrary-user-file ACL mutation was introduced."
     },
     {
       "id": "A6",
@@ -101,5 +107,21 @@
     "security_review": true,
     "exact_head_ci": true
   },
-  "done_when": "Native Windows proves that the restricted process boundary cannot read Cotra-owned protected state or inherit Cotra secret/authority surfaces, any necessary Cotra-owned ACL hardening is merged and requalified, existing process authority does not widen, and implementation receives exact-head plus post-merge verification."
+  "done_when": "Native Windows proves that the restricted process boundary cannot read Cotra-owned protected state or inherit Cotra secret/authority surfaces, any necessary Cotra-owned ACL hardening is merged and requalified, existing process authority does not widen, and implementation receives exact-head plus post-merge verification.",
+  "canonical_evidence": {
+    "implementation_pr": 24,
+    "implementation_base": "fb84a7fe8bab9589f29213eecdd346a306910fec",
+    "qualified_head": "2fa87c15a3a6f7d0fdc3cf06ed3015ccce0a039e",
+    "pre_merge_ci": "36255254224",
+    "pre_merge_review_gates": "36255253042",
+    "merge_sha": "6b24a810712c7ee1edfab714c672447606dc0b13",
+    "post_merge_ci": "36255431331",
+    "native_windows": "SUCCESS: protected_state_child and windows_restricted_child_cannot_read_cotra_protected_state passed; AppContainer read of the Cotra-owned LocalAppData sentinel was denied, tested secret-like variables were absent, stdin was NUL/EOF, and Job quiescence was verified.",
+    "jev": "PASSED: 2/2 hunks, zero findings, zero blocking findings",
+    "ocr": "PASSED: Open Code Review v1.12.9 exact-range delegation, 2 files total, 1 reviewable, 1 excluded unsupported_ext and manually reviewed",
+    "security_review": "PASS on exact qualified head; no public authority delta",
+    "unresolved_review_threads": 0,
+    "acl_repair_required": false,
+    "authority_boundary": "No new public authority. Windows public process.spawn remains restricted to the exact SG-000010-qualified %SystemRoot%\\System32\\whoami.exe target; generic executable-registry widening, PowerShell, process network, detached/background execution, and public kill remain absent."
+  }
 }
