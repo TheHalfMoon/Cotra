@@ -2,7 +2,7 @@
   "id": "SG-000009A",
   "title": "Destructive timeout and output-limit termination qualification",
   "program": "COTRA-P05",
-  "state": "PROVEN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-24",
   "base": "617b06ca234298f5cca184d66c04df5ce1b1b4cc",
@@ -12,95 +12,24 @@
   "pre_merge_ci": "36034565643",
   "pre_merge_review_gates": "36034562275",
   "post_merge_ci": "36196698333",
-  "dependencies": [
-    "SG-000005",
-    "SG-000006",
-    "SG-000007",
-    "SG-000008",
-    "SG-000009"
-  ],
+  "dependencies": ["SG-000005", "SG-000006", "SG-000007", "SG-000008", "SG-000009"],
   "objective": "Qualify the provider-private bounded executor's destructive failure paths using deterministic fixed inbox child modes: timeout and stdout/stderr output-limit termination must terminate the Job, verify zero active Job processes, distinguish verified termination from unverified termination, and return typed evidence without exposing external process authority.",
   "scope": {
-    "include": [
-      "fixed deterministic timeout qualification child mode",
-      "fixed deterministic stdout-limit qualification child mode",
-      "fixed deterministic stderr-limit qualification child mode",
-      "bounded cancellation signal",
-      "Job Object termination and active-process accounting",
-      "verified process-tree quiescence evidence",
-      "typed ProcessTimeout, OutputLimit, and TerminationUnverified results",
-      "native Windows qualification"
-    ],
-    "exclude": [
-      "process.spawn MCP registration",
-      "PowerShell",
-      "caller-selected arbitrary executable authority",
-      "network capability",
-      "configured workspace grants or ACL mutation",
-      "browser",
-      "UI automation",
-      "elevation",
-      "approval",
-      "persistent audit/approval integration"
-    ]
+    "include": ["fixed deterministic timeout qualification child mode", "fixed deterministic stdout-limit qualification child mode", "fixed deterministic stderr-limit qualification child mode", "bounded cancellation signal", "Job Object termination and active-process accounting", "verified process-tree quiescence evidence", "typed ProcessTimeout, OutputLimit, and TerminationUnverified results", "native Windows qualification"],
+    "exclude": ["process.spawn MCP registration", "PowerShell", "caller-selected arbitrary executable authority", "network capability", "configured workspace grants or ACL mutation", "browser", "UI automation", "elevation", "approval", "persistent audit/approval integration"]
   },
-  "authority_delta": {
-    "filesystem": "Qualification-only explicit temporary root used as cwd; no configured workspace grant or ACL mutation",
-    "process": "Private test-only fixed failure-mode executor; no external or MCP process authority",
-    "network": "None; zero AppContainer capabilities",
-    "browser": "None",
-    "ui_input": "None",
-    "secrets": "Fixed environment allowlist; no Cotra/tunnel secret inheritance",
-    "approval": "No change",
-    "privileged": "None"
-  },
-  "invariants": [
-    "Failure fixtures are fixed provider-private modes and are not caller-selectable executable authority",
-    "Each child is AppContainer-contained and assigned to the kill-on-close Job before resume",
-    "Timeout termination closes the active Job and verifies zero active Job processes before returning ProcessTimeout",
-    "Output-limit termination closes the active Job and verifies zero active Job processes before returning OutputLimit",
-    "Any termination uncertainty returns TerminationUnverified and never a success result",
-    "Stdout and stderr limits remain independently enforced",
-    "No child environment or handle inheritance broadens beyond the SG-000009 allowlist",
-    "No network, PowerShell, ACL grant, browser/UI, elevation, approval, or process.spawn authority is added"
-  ],
+  "authority_delta": {"filesystem": "Qualification-only explicit temporary root used as cwd; no configured workspace grant or ACL mutation", "process": "Private test-only fixed failure-mode executor; no external or MCP process authority", "network": "None; zero AppContainer capabilities", "browser": "None", "ui_input": "None", "secrets": "Fixed environment allowlist; no Cotra/tunnel secret inheritance", "approval": "No change", "privileged": "None"},
+  "invariants": ["Failure fixtures are fixed provider-private modes and are not caller-selectable executable authority", "Each child is AppContainer-contained and assigned to the kill-on-close Job before resume", "Timeout termination closes the active Job and verifies zero active Job processes before returning ProcessTimeout", "Output-limit termination closes the active Job and verifies zero active Job processes before returning OutputLimit", "Any termination uncertainty returns TerminationUnverified and never a success result", "Stdout and stderr limits remain independently enforced", "No child environment or handle inheritance broadens beyond the SG-000009 allowlist", "No network, PowerShell, ACL grant, browser/UI, elevation, approval, or process.spawn authority is added"],
   "acceptance": [
-    {
-      "id": "A1",
-      "claim": "Native Windows timeout fixture reaches its bounded deadline and returns typed ProcessTimeout only after zero active Job processes."
-    },
-    {
-      "id": "A2",
-      "claim": "Native Windows stdout-limit fixture returns typed OutputLimit only after zero active Job processes."
-    },
-    {
-      "id": "A3",
-      "claim": "Native Windows stderr-limit fixture returns typed OutputLimit only after zero active Job processes."
-    },
-    {
-      "id": "A4",
-      "claim": "A deliberately indeterminate termination path returns TerminationUnverified rather than success."
-    },
-    {
-      "id": "A5",
-      "claim": "Failure fixtures preserve AppContainer identity, pre-resume Job membership, fixed environment, and three-handle inheritance."
-    },
-    {
-      "id": "A6",
-      "claim": "Existing SG-000009 fixed no-argument success fixture remains green."
-    },
-    {
-      "id": "A7",
-      "claim": "Exact-head Windows/Ubuntu Rust, Node, Governance, Jev, and Alibaba Open Code Review gates pass."
-    }
+    {"id": "A1", "claim": "Native Windows timeout fixture reaches its bounded deadline and returns typed ProcessTimeout only after zero active Job processes."},
+    {"id": "A2", "claim": "Native Windows stdout-limit fixture returns typed OutputLimit only after zero active Job processes."},
+    {"id": "A3", "claim": "Native Windows stderr-limit fixture returns typed OutputLimit only after zero active Job processes."},
+    {"id": "A4", "claim": "A deliberately indeterminate termination path returns TerminationUnverified rather than success."},
+    {"id": "A5", "claim": "Failure fixtures preserve AppContainer identity, pre-resume Job membership, fixed environment, and three-handle inheritance."},
+    {"id": "A6", "claim": "Existing SG-000009 fixed no-argument success fixture remains green."},
+    {"id": "A7", "claim": "Exact-head Windows/Ubuntu Rust, Node, Governance, Jev, and Alibaba Open Code Review gates pass."}
   ],
-  "review": {
-    "diffcipline": true,
-    "jev_semantic_review": true,
-    "alibaba_open_code_review": "where integrated",
-    "security_review": true,
-    "exact_head_ci": true
-  },
+  "review": {"diffcipline": true, "jev_semantic_review": true, "alibaba_open_code_review": "where integrated", "security_review": true, "exact_head_ci": true},
   "done_when": "Timeout and output-limit destructive paths are merged with exact-head and post-merge verification, or a genuine Windows limitation is documented without weakening typed failure semantics.",
   "canonical_evidence": {
     "merge_sha": "f405b7f0fcbc949d5f9ddf868e8e5029b1024310",
@@ -109,9 +38,15 @@
     "pre_merge_ci": "36034565643",
     "pre_merge_review_gates": "36034562275",
     "post_merge_ci": "36196698333",
+    "closeout_pr": 15,
+    "closeout_head": "790cae1e617d8eb8efa0f7baad77121394b2b2bf",
+    "closeout_pre_merge_ci": "36197082769",
+    "closeout_review_gates": "36197082800",
+    "closeout_merge_sha": "4d843a6b519faf39ac16e320e99683b236140b5c",
+    "closeout_post_merge_ci": "36198431012",
     "native_windows": "SUCCESS",
-    "jev": "PASSED: 15/15 hunks, zero findings, zero blocking findings",
-    "ocr": "PASSED: exact-range delegation, 3 files, 1 reviewable, 2 excluded unsupported_ext",
+    "jev": "PASSED: implementation 15/15 hunks and closeout 5/5 hunks, zero findings, zero blocking findings",
+    "ocr": "PASSED: exact-range delegation on implementation and closeout ranges",
     "deferred": "No external process.spawn authority exposed."
   }
 }
