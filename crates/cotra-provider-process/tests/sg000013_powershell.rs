@@ -1,8 +1,8 @@
 #![cfg(windows)]
 
 use cotra_provider_process::{
-    build_execution_plan, execute_contained, ExecutionLimits, ExecutionPlan,
-    OutputStream, PrivateExecutionFailure,
+    build_execution_plan, execute_contained, ExecutionLimits, ExecutionPlan, OutputStream,
+    PrivateExecutionFailure,
 };
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -66,11 +66,7 @@ fn workspace(label: &str) -> PathBuf {
     path
 }
 
-fn powershell_plan(
-    root: &PathBuf,
-    script: &str,
-    limits: ExecutionLimits,
-) -> ExecutionPlan {
+fn powershell_plan(root: &PathBuf, script: &str, limits: ExecutionLimits) -> ExecutionPlan {
     let argv = vec![
         "-NoLogo".to_owned(),
         "-NoProfile".to_owned(),
@@ -88,7 +84,10 @@ fn powershell_plan(
     )
     .expect("build fixed bounded PowerShell plan");
 
-    assert_eq!(&plan.argv[..4], ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]);
+    assert_eq!(
+        &plan.argv[..4],
+        ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]
+    );
     assert!(!plan.env.keys().any(|key| key.starts_with("COTRA_")));
     assert!(!plan.env.keys().any(|key| key.contains("API_KEY")));
     assert!(!plan.env.keys().any(|key| key.contains("SECRET")));
