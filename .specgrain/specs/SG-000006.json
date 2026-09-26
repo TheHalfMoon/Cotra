@@ -2,51 +2,18 @@
   "id": "SG-000006",
   "title": "Windows AppContainer primitive qualification",
   "program": "COTRA-P05",
-  "state": "GRAIN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-24",
   "base": "0f71ca47b32f08045f83d194497aa49daad2d4de",
   "dependencies": ["SG-000005"],
   "objective": "Prove on native Windows CI that Cotra can create a temporary AppContainer profile, derive its SID, and delete the profile without exposing process execution authority.",
   "scope": {
-    "include": [
-      "AppContainer name validation",
-      "CreateAppContainerProfile probe",
-      "DeriveAppContainerSidFromAppContainerName probe",
-      "FreeSid ownership handling",
-      "DeleteAppContainerProfile cleanup",
-      "Windows-native lifecycle test",
-      "portable validation tests"
-    ],
-    "exclude": [
-      "CreateProcessW",
-      "process.spawn MCP tool",
-      "PowerShell",
-      "workspace ACL mutation",
-      "Job Object process assignment",
-      "network capabilities",
-      "elevation",
-      "UI automation"
-    ]
+    "include": ["AppContainer name validation", "CreateAppContainerProfile probe", "DeriveAppContainerSidFromAppContainerName probe", "FreeSid ownership handling", "DeleteAppContainerProfile cleanup", "Windows-native lifecycle test", "portable validation tests"],
+    "exclude": ["CreateProcessW", "process.spawn MCP tool", "PowerShell", "workspace ACL mutation", "Job Object process assignment", "network capabilities", "elevation", "UI automation"]
   },
-  "authority_delta": {
-    "filesystem": "Windows test creates and deletes only the per-user temporary AppContainer profile managed by the OS",
-    "process": "No child process launch and no MCP execution authority",
-    "network": "None",
-    "browser": "None",
-    "ui_input": "None",
-    "secrets": "None",
-    "approval": "No change",
-    "privileged": "None"
-  },
-  "invariants": [
-    "AppContainer profile names are validated before FFI",
-    "temporary profile is deleted on success",
-    "derive failure triggers cleanup attempt",
-    "SID allocations returned by Windows are released with FreeSid",
-    "process.spawn remains policy-denied and absent from MCP",
-    "no network capability SID is granted"
-  ],
+  "authority_delta": {"filesystem": "Windows test creates and deletes only the per-user temporary AppContainer profile managed by the OS", "process": "No child process launch and no MCP execution authority", "network": "None", "browser": "None", "ui_input": "None", "secrets": "None", "approval": "No change", "privileged": "None"},
+  "invariants": ["AppContainer profile names are validated before FFI", "temporary profile is deleted on success", "derive failure triggers cleanup attempt", "SID allocations returned by Windows are released with FreeSid", "process.spawn remains policy-denied and absent from MCP", "no network capability SID is granted"],
   "acceptance": [
     {"id": "A1", "claim": "Windows native test creates an AppContainer profile successfully."},
     {"id": "A2", "claim": "Windows native test derives the profile SID successfully."},
@@ -54,12 +21,6 @@
     {"id": "A4", "claim": "Non-Windows builds compile without linking Windows APIs."},
     {"id": "A5", "claim": "Exact-head Windows/Ubuntu CI and Governance pass."}
   ],
-  "review": {
-    "diffcipline": true,
-    "jev_semantic_review": true,
-    "alibaba_open_code_review": "where integrated",
-    "security_review": true,
-    "exact_head_ci": true
-  },
+  "review": {"diffcipline": true, "jev_semantic_review": true, "alibaba_open_code_review": "where integrated", "security_review": true, "exact_head_ci": true},
   "done_when": "The AppContainer profile lifecycle is proven on Windows CI and merged with post-merge verification. Child launch remains a successor grain."
 }
