@@ -6,22 +6,87 @@
   "risk": "high",
   "created": "2026-09-24",
   "base": "ed5cd2be9acd7aac93754965d055c82f77a01884",
-  "dependencies": ["SG-000001", "SG-000002", "SG-000003", "SG-000004", "SG-000005", "SG-000006", "SG-000007"],
+  "dependencies": [
+    "SG-000001",
+    "SG-000002",
+    "SG-000003",
+    "SG-000004",
+    "SG-000005",
+    "SG-000006",
+    "SG-000007"
+  ],
   "objective": "Introduce a base-controlled GitHub review gate that executes no pull-request-controlled code with repository secrets, sends the exact BASE..HEAD diff including deletions to genuine TypeSafe Jev, and records fail-closed machine-readable coverage and findings.",
   "scope": {
-    "include": ["base-controlled pull_request_target review workflow", "exact GitHub PR-head fetch with merge-base verification", "base SHA exact-diff Jev adapter", "pinned jev-review checkout and TypeSafe SDK", "per-hunk Jev screening and severity-rated findings", "Alibaba OCR Delegation Mode artifacts", "source ledger integration record"],
-    "exclude": ["application runtime changes", "process execution authority", "PowerShell", "network/browser/UI authority", "secret values in reports", "candidate-controlled code execution in secret-bearing jobs"]
+    "include": [
+      "base-controlled pull_request_target review workflow",
+      "exact GitHub PR-head fetch with merge-base verification",
+      "base SHA exact-diff Jev adapter",
+      "pinned jev-review checkout and TypeSafe SDK",
+      "per-hunk Jev screening and severity-rated findings",
+      "Alibaba OCR Delegation Mode artifacts",
+      "source ledger integration record"
+    ],
+    "exclude": [
+      "application runtime changes",
+      "process execution authority",
+      "PowerShell",
+      "network/browser/UI authority",
+      "secret values in reports",
+      "candidate-controlled code execution in secret-bearing jobs"
+    ]
   },
-  "authority_delta": {"filesystem": "Review tooling only; no Cotra runtime filesystem authority", "process": "No Cotra runtime process authority", "network": "Review-only pinned tool installation and TypeSafe API access", "browser": "None", "ui_input": "None", "secrets": "TYPESAFE_API_KEY is scoped to credential presence and base-controlled adapter execution only", "approval": "No change", "privileged": "No runtime authority; repository workflow governance changes"},
-  "invariants": ["The workflow executing under pull_request_target is loaded from the base branch", "The Jev adapter executed with TYPESAFE_API_KEY is extracted from the exact base SHA", "The pull-request head is fetched only as Git data and is never checked out in the secret-bearing job", "The reviewed range is exactly BASE_SHA..HEAD_SHA and the merge base equals BASE_SHA", "Every changed-file hunk including deletions receives a genuine TypeSafe Jev screening judgment", "Incomplete coverage, SDK errors, binary diffs, or severity-2/3 findings fail the gate", "OCR executes only the checksum-pinned official Linux release binary and never executes candidate package scripts", "No TypeSafe credential value is printed or persisted"],
-  "acceptance": [
-    {"id": "A1", "claim": "A temporary exact-diff fixture containing a deleted file records the deleted path and complete 1/1 hunk coverage."},
-    {"id": "A2", "claim": "Workflow syntax proves pull_request_target, base checkout, exact PR-ref fetch, merge-base equality, and base-SHA adapter extraction."},
-    {"id": "A3", "claim": "Genuine local TypeSafe Jev reviews every exact bootstrap diff hunk with the SDK installed by pinned jev-review commit 31f89602797fb7bea007f8a480bf368bf564954e."},
-    {"id": "A4", "claim": "Pinned Alibaba OCR Delegation Mode executes against the exact bootstrap range and records selected/excluded files and rules."},
-    {"id": "A5", "claim": "Exact-head Windows, Ubuntu, Node, and Governance CI pass."},
-    {"id": "A6", "claim": "Independent security review finds no unresolved critical/high workflow or adapter finding."}
+  "authority_delta": {
+    "filesystem": "Review tooling only; no Cotra runtime filesystem authority",
+    "process": "No Cotra runtime process authority",
+    "network": "Review-only pinned tool installation and TypeSafe API access",
+    "browser": "None",
+    "ui_input": "None",
+    "secrets": "TYPESAFE_API_KEY is scoped to credential presence and base-controlled adapter execution only",
+    "approval": "No change",
+    "privileged": "No runtime authority; repository workflow governance changes"
+  },
+  "invariants": [
+    "The workflow executing under pull_request_target is loaded from the base branch",
+    "The Jev adapter executed with TYPESAFE_API_KEY is extracted from the exact base SHA",
+    "The pull-request head is fetched only as Git data and is never checked out in the secret-bearing job",
+    "The reviewed range is exactly BASE_SHA..HEAD_SHA and the merge base equals BASE_SHA",
+    "Every changed-file hunk including deletions receives a genuine TypeSafe Jev screening judgment",
+    "Incomplete coverage, SDK errors, binary diffs, or severity-2/3 findings fail the gate",
+    "OCR executes only the checksum-pinned official Linux release binary and never executes candidate package scripts",
+    "No TypeSafe credential value is printed or persisted"
   ],
-  "review": {"diffcipline": true, "jev_semantic_review": true, "alibaba_open_code_review": "where integrated", "security_review": true, "exact_head_ci": true},
+  "acceptance": [
+    {
+      "id": "A1",
+      "claim": "A temporary exact-diff fixture containing a deleted file records the deleted path and complete 1/1 hunk coverage."
+    },
+    {
+      "id": "A2",
+      "claim": "Workflow syntax proves pull_request_target, base checkout, exact PR-ref fetch, merge-base equality, and base-SHA adapter extraction."
+    },
+    {
+      "id": "A3",
+      "claim": "Genuine local TypeSafe Jev reviews every exact bootstrap diff hunk with the SDK installed by pinned jev-review commit 31f89602797fb7bea007f8a480bf368bf564954e."
+    },
+    {
+      "id": "A4",
+      "claim": "Pinned Alibaba OCR Delegation Mode executes against the exact bootstrap range and records selected/excluded files and rules."
+    },
+    {
+      "id": "A5",
+      "claim": "Exact-head Windows, Ubuntu, Node, and Governance CI pass."
+    },
+    {
+      "id": "A6",
+      "claim": "Independent security review finds no unresolved critical/high workflow or adapter finding."
+    }
+  ],
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": "where integrated",
+    "security_review": true,
+    "exact_head_ci": true
+  },
   "done_when": "The trusted base-controlled exact-diff review gate is merged with post-merge CI and becomes available to qualify SG-000008 without executing candidate code with TYPESAFE_API_KEY."
 }
