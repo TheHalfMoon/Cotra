@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_base": "388f5de196580d71275a31b84b584f5ac280baec",
+  "snapshot_base": "00cab385bdce43562530646dce84be71e1ddfabd",
   "state_semantics": {
     "GRAIN": "Authorized or active work packet whose acceptance is not yet canonically proven.",
     "PROVEN": "Acceptance and required qualification are proven, but canonical closeout/governance is not yet complete.",
@@ -141,6 +141,18 @@
       "review_basis": "Exact-head genuine TypeSafe Jev 46/46 hunks with zero findings/blocking findings, Alibaba Open Code Review v1.12.9 exact-range delegation, independent exact-head security re-review after positive executable-policy repair, native Windows qualification, and zero unresolved review threads.",
       "unresolved_review_threads": 0,
       "authority_boundary": "Windows public process.spawn is restricted to the exact qualified %SystemRoot%\\System32\\whoami.exe target. Generic executable-registry authority and descendant-producing executable qualification remain successor work."
+    },
+    "SG-000011": {
+      "implementation_pr": 21,
+      "implementation_base": "57bb970c69f55c7775900f47fe1047c5ff7322f7",
+      "qualified_head": "b6ca7106196e3d1c4771f46f311ec22a413eff49",
+      "pre_merge_ci": "36251790829",
+      "pre_merge_review_gates": "36251789043",
+      "merge_sha": "00cab385bdce43562530646dce84be71e1ddfabd",
+      "post_merge_ci": "36253841733",
+      "review_basis": "Exact-head genuine TypeSafe Jev 11/11 hunks with zero findings/blocking findings, Alibaba Open Code Review v1.12.9 exact-range delegation, manual security review of the excluded security note, native Windows descendant-retained-stdio qualification, SG-000009/009A/010 regressions, and zero unresolved review threads.",
+      "unresolved_review_threads": 0,
+      "authority_boundary": "No new public authority. Windows public process.spawn remains restricted to the exact SG-000010-qualified %SystemRoot%\\System32\\whoami.exe target; generic executable-registry widening, PowerShell, process network, detached/background execution, and public kill remain absent."
     }
   }
 }

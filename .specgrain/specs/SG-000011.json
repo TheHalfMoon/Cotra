@@ -2,10 +2,16 @@
   "id": "SG-000011",
   "title": "Descendant-aware post-exit lifecycle hardening",
   "program": "COTRA-P05",
-  "state": "GRAIN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-26",
   "base": "f743ca8923756b7d89f009a9994286a27c80245f",
+  "qualified_head": "b6ca7106196e3d1c4771f46f311ec22a413eff49",
+  "implementation_base": "57bb970c69f55c7775900f47fe1047c5ff7322f7",
+  "implementation_merge": "00cab385bdce43562530646dce84be71e1ddfabd",
+  "pre_merge_ci": "36251790829",
+  "pre_merge_review_gates": "36251789043",
+  "post_merge_ci": "36253841733",
   "dependencies": [
     "SG-000009A",
     "SG-000010"
@@ -99,5 +105,20 @@
     "security_review": true,
     "exact_head_ci": true
   },
-  "done_when": "Descendant-retained-stdio post-primary-exit behavior is bounded and natively qualified, Job/process-tree quiescence is verified before success, uncertainty fails closed as TerminationUnverified, existing public process.spawn authority does not widen, and the implementation is merged with post-merge verification."
+  "done_when": "Descendant-retained-stdio post-primary-exit behavior is bounded and natively qualified, Job/process-tree quiescence is verified before success, uncertainty fails closed as TerminationUnverified, existing public process.spawn authority does not widen, and the implementation is merged with post-merge verification.",
+  "canonical_evidence": {
+    "implementation_pr": 21,
+    "implementation_base": "57bb970c69f55c7775900f47fe1047c5ff7322f7",
+    "qualified_head": "b6ca7106196e3d1c4771f46f311ec22a413eff49",
+    "pre_merge_ci": "36251790829",
+    "pre_merge_review_gates": "36251789043",
+    "merge_sha": "00cab385bdce43562530646dce84be71e1ddfabd",
+    "post_merge_ci": "36253841733",
+    "native_windows": "SUCCESS",
+    "jev": "PASSED: 11/11 hunks, zero findings, zero blocking findings",
+    "ocr": "PASSED: exact-range delegation, 2 files total, 1 reviewable, 1 excluded",
+    "security_review": "PASS on exact qualified head; no public authority delta",
+    "unresolved_review_threads": 0,
+    "authority_boundary": "No new public authority. Windows public process.spawn remains restricted to the exact SG-000010-qualified %SystemRoot%\\System32\\whoami.exe target; generic executable-registry widening, PowerShell, process network, detached/background execution, and public kill remain absent."
+  }
 }
