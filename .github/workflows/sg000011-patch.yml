@@ -1,0 +1,112 @@
+name: SG-000011 one-time implementation patch
+
+on:
+  push:
+    branches:
+      - feat/sg-000011-implementation
+    paths:
+      - .github/workflows/sg000011-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/sg-000011-implementation
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: Apply bounded descendant lifecycle patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/cotra-provider-process/src/lib.rs')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''    StderrLimit,\n}\n\n#[cfg(windows)]\npub fn execute_contained''',
+              '''    StderrLimit,\n    DescendantDrain,\n}\n\n#[cfg(windows)]\npub fn execute_contained''',
+              'mode enum',
+          )
+
+          replace_once(
+              '''    const QUIESCENCE_TIMEOUT_MS: u64 = 5_000;''',
+              '''    const QUIESCENCE_TIMEOUT_MS: u64 = 5_000;\n    const POST_EXIT_DRAIN_TIMEOUT_MS: u64 = 500;\n    const POST_TERMINATION_DRAIN_TIMEOUT_MS: u64 = 1_000;''',
+              'drain constants',
+          )
+
+          replace_once(
+              '''            PrivateExecutionMode::Timeout\n            | PrivateExecutionMode::StdoutLimit\n            | PrivateExecutionMode::StderrLimit => std::env::current_exe()''',
+              '''            PrivateExecutionMode::Timeout\n            | PrivateExecutionMode::StdoutLimit\n            | PrivateExecutionMode::StderrLimit\n            | PrivateExecutionMode::DescendantDrain => std::env::current_exe()''',
+              'expected executable modes',
+          )
+
+          replace_once(
+              '''            PrivateExecutionMode::StderrLimit => vec![\n                "--exact".into(),\n                "contained_launch_tests::private_stderr_fixture_child".into(),\n                "--nocapture".into(),\n            ],\n        };''',
+              '''            PrivateExecutionMode::StderrLimit => vec![\n                "--exact".into(),\n                "contained_launch_tests::private_stderr_fixture_child".into(),\n                "--nocapture".into(),\n            ],\n            PrivateExecutionMode::DescendantDrain => vec![\n                "--exact".into(),\n                "contained_launch_tests::private_descendant_primary_child".into(),\n                "--nocapture".into(),\n            ],\n        };''',
+              'expected argv modes',
+          )
+
+          replace_once(
+              '''            PrivateExecutionMode::Timeout\n                | PrivateExecutionMode::StdoutLimit\n                | PrivateExecutionMode::StderrLimit\n        ) {''',
+              '''            PrivateExecutionMode::Timeout\n                | PrivateExecutionMode::StdoutLimit\n                | PrivateExecutionMode::StderrLimit\n                | PrivateExecutionMode::DescendantDrain\n        ) {''',
+              'descendant fixture modes',
+          )
+
+          replace_once(
+              '''                PrivateExecutionMode::StdoutLimit | PrivateExecutionMode::StderrLimit => vec![\n                    "--exact".to_owned(),\n                    "contained_launch_tests::private_output_descendant".to_owned(),\n                    "--nocapture".to_owned(),\n                ],\n                PrivateExecutionMode::Public | PrivateExecutionMode::Success => unreachable!(),''',
+              '''                PrivateExecutionMode::StdoutLimit\n                | PrivateExecutionMode::StderrLimit\n                | PrivateExecutionMode::DescendantDrain => vec![\n                    "--exact".to_owned(),\n                    "contained_launch_tests::private_output_descendant".to_owned(),\n                    "--nocapture".to_owned(),\n                ],\n                PrivateExecutionMode::Public | PrivateExecutionMode::Success => unreachable!(),''',
+              'descendant argv modes',
+          )
+
+          replace_once(
+              '''    fn terminate_and_verify(job: &JobObject, event: DestructiveEvent) -> PrivateExecutionFailure {\n        if job.terminate().is_err() {\n            return PrivateExecutionFailure::TerminationUnverified;\n        }\n        let verified = matches!(job.wait_for_quiescence(), Ok(true));\n        classify_termination(event, verified)\n    }\n\n    pub(super) fn qualify_private_execution(''',
+              '''    fn terminate_and_verify(job: &JobObject, event: DestructiveEvent) -> PrivateExecutionFailure {\n        if job.terminate().is_err() {\n            return PrivateExecutionFailure::TerminationUnverified;\n        }\n        let verified = matches!(job.wait_for_quiescence(), Ok(true));\n        classify_termination(event, verified)\n    }\n\n    enum PostExitDrain {\n        Complete,\n        OutputLimit(OutputStream),\n        Deadline,\n    }\n\n    fn drain_pipes_until(\n        stdout_pipe: &PrivatePipe,\n        stderr_pipe: &PrivatePipe,\n        stdout: &mut Vec<u8>,\n        stderr: &mut Vec<u8>,\n        stdout_limit: usize,\n        stderr_limit: usize,\n        deadline: std::time::Instant,\n    ) -> Result<PostExitDrain, PrivateExecutionFailure> {\n        let mut stdout_closed = false;\n        let mut stderr_closed = false;\n        loop {\n            if !stdout_closed {\n                match read_pipe(stdout_pipe, stdout, stdout_limit) {\n                    Ok(PipeRead::Closed) => stdout_closed = true,\n                    Ok(PipeRead::Open) => {}\n                    Ok(PipeRead::LimitExceeded) => {\n                        return Ok(PostExitDrain::OutputLimit(OutputStream::Stdout));\n                    }\n                    Err(error) => {\n                        return Err(PrivateExecutionFailure::Provider(error.message));\n                    }\n                }\n            }\n            if !stderr_closed {\n                match read_pipe(stderr_pipe, stderr, stderr_limit) {\n                    Ok(PipeRead::Closed) => stderr_closed = true,\n                    Ok(PipeRead::Open) => {}\n                    Ok(PipeRead::LimitExceeded) => {\n                        return Ok(PostExitDrain::OutputLimit(OutputStream::Stderr));\n                    }\n                    Err(error) => {\n                        return Err(PrivateExecutionFailure::Provider(error.message));\n                    }\n                }\n            }\n            if stdout_closed && stderr_closed {\n                return Ok(PostExitDrain::Complete);\n            }\n            if std::time::Instant::now() >= deadline {\n                return Ok(PostExitDrain::Deadline);\n            }\n            unsafe {\n                Sleep(QUIESCENCE_POLL_MS as u32);\n            }\n        }\n    }\n\n    pub(super) fn qualify_private_execution(''',
+              'post-exit drain helper',
+          )
+
+          old_drain = '''        let exit_code = child\n            .wait_for_completion()\n            .map_err(|e| PrivateExecutionFailure::Provider(e.message))?;\n        let mut drain_event = None;\n        loop {\n            match read_pipe(&stdout_pipe, &mut stdout, plan.limits.stdout_bytes) {\n                Ok(PipeRead::Closed) => break,\n                Ok(PipeRead::Open) => {}\n                Ok(PipeRead::LimitExceeded) => {\n                    drain_event = Some(OutputStream::Stdout);\n                    break;\n                }\n                Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),\n            }\n        }\n        if drain_event.is_none() {\n            loop {\n                match read_pipe(&stderr_pipe, &mut stderr, plan.limits.stderr_bytes) {\n                    Ok(PipeRead::Closed) => break,\n                    Ok(PipeRead::Open) => {}\n                    Ok(PipeRead::LimitExceeded) => {\n                        drain_event = Some(OutputStream::Stderr);\n                        break;\n                    }\n                    Err(error) => return Err(PrivateExecutionFailure::Provider(error.message)),\n                }\n            }\n        }\n        if let Some(stream) = drain_event {\n            return Err(terminate_and_verify(\n                &job,\n                DestructiveEvent::OutputLimit(stream),\n            ));\n        }\n'''
+          new_drain = '''        let exit_code = child\n            .wait_for_completion()\n            .map_err(|e| PrivateExecutionFailure::Provider(e.message))?;\n        let drain_deadline = std::time::Instant::now()\n            + std::time::Duration::from_millis(POST_EXIT_DRAIN_TIMEOUT_MS);\n        match drain_pipes_until(\n            &stdout_pipe,\n            &stderr_pipe,\n            &mut stdout,\n            &mut stderr,\n            plan.limits.stdout_bytes,\n            plan.limits.stderr_bytes,\n            drain_deadline,\n        )? {\n            PostExitDrain::Complete => {}\n            PostExitDrain::OutputLimit(stream) => {\n                return Err(terminate_and_verify(\n                    &job,\n                    DestructiveEvent::OutputLimit(stream),\n                ));\n            }\n            PostExitDrain::Deadline => {\n                let active = job\n                    .active_processes()\n                    .map_err(|_| PrivateExecutionFailure::TerminationUnverified)?;\n                if active == 0 || job.terminate().is_err() {\n                    return Err(PrivateExecutionFailure::TerminationUnverified);\n                }\n                if !matches!(job.wait_for_quiescence(), Ok(true)) {\n                    return Err(PrivateExecutionFailure::TerminationUnverified);\n                }\n                if let Some(descendant_process) = descendant.as_mut() {\n                    descendant_process.completed = true;\n                }\n                let cleanup_deadline = std::time::Instant::now()\n                    + std::time::Duration::from_millis(POST_TERMINATION_DRAIN_TIMEOUT_MS);\n                match drain_pipes_until(\n                    &stdout_pipe,\n                    &stderr_pipe,\n                    &mut stdout,\n                    &mut stderr,\n                    plan.limits.stdout_bytes,\n                    plan.limits.stderr_bytes,\n                    cleanup_deadline,\n                )? {\n                    PostExitDrain::Complete => {}\n                    PostExitDrain::OutputLimit(stream) => {\n                        return Err(classify_termination(\n                            DestructiveEvent::OutputLimit(stream),\n                            true,\n                        ));\n                    }\n                    PostExitDrain::Deadline => {\n                        return Err(PrivateExecutionFailure::TerminationUnverified);\n                    }\n                }\n            }\n        }\n'''
+          replace_once(old_drain, new_drain, 'unbounded post-exit drain')
+
+          replace_once(
+              '''    #[test]\n    fn private_output_descendant() {\n        if std::env::args().any(|argument| argument == "--exact") {\n            std::thread::sleep(Duration::from_secs(30));\n        }\n    }\n''',
+              '''    #[test]\n    fn private_descendant_primary_child() {\n        if std::env::args().any(|argument| argument == "--exact") {\n            return;\n        }\n    }\n\n    #[test]\n    fn private_output_descendant() {\n        if std::env::args().any(|argument| argument == "--exact") {\n            std::thread::sleep(Duration::from_secs(30));\n        }\n    }\n''',
+              'descendant primary fixture',
+          )
+
+          replace_once(
+              '''    #[test]\n    fn windows_private_unverified_termination_never_promotes_timeout_or_output_limit() {''',
+              '''    #[test]\n    fn windows_private_descendant_retained_stdio_is_bounded_and_quiescent() {\n        let suffix = SystemTime::now()\n            .duration_since(UNIX_EPOCH)\n            .expect("clock")\n            .as_nanos();\n        let limits = ExecutionLimits {\n            timeout: Duration::from_secs(5),\n            stdout_bytes: 16 * 1024,\n            stderr_bytes: 16 * 1024,\n        };\n        let (workspace, plan) = private_fixture_plan(\n            suffix,\n            "contained_launch_tests::private_descendant_primary_child",\n            limits,\n        );\n        let started = std::time::Instant::now();\n        let result = qualify_private_execution_mode(\n            plan,\n            &format!("Cotra.Private.DescendantDrain.{suffix}"),\n            PrivateExecutionMode::DescendantDrain,\n        )\n        .expect("bounded descendant drain");\n        assert!(started.elapsed() < Duration::from_secs(5));\n        assert_eq!(result.exit_code, 0);\n        assert!(result.appcontainer_verified);\n        assert!(result.assigned_to_job_before_resume);\n        assert!(result.job_quiescent);\n        let _ = std::fs::remove_dir_all(workspace);\n    }\n\n    #[test]\n    fn windows_private_unverified_termination_never_promotes_timeout_or_output_limit() {''',
+              'descendant lifecycle qualification test',
+          )
+
+          path.write_text(text, encoding='utf-8')
+
+          note = Path('docs/security/SG-000011_DESCENDANT_LIFECYCLE_NOTE.md')
+          note.write_text('''# SG-000011 — Descendant-aware post-exit lifecycle hardening\n\nSG-000011 closes the post-primary-exit pipe-drain gap identified during SG-000010 review without widening public process authority.\n\n## Qualified behavior\n\nAfter the primary contained process exits, stdout and stderr are drained together under an explicit bounded deadline. If both pipes reach EOF, normal Job quiescence verification continues. If the drain deadline expires while Job members remain active, Cotra terminates the Job, requires verified zero active Job processes, and then performs one final bounded drain so inherited pipe handles must reach a terminal state before success.\n\nIf Job termination, zero-active-process verification, or final pipe closure cannot be proven, the executor returns `TerminationUnverified`. Output-limit events retain stream-typed `OutputLimit` semantics and are never promoted without verified termination.\n\n## Native qualification fixture\n\nThe SG-000011 fixture is provider-private. The executor creates a primary test process and a second AppContainer-contained Job member that shares the same inherited stdout/stderr handles. The primary exits immediately while the second Job member remains alive, reproducing the retained-handle condition deterministically. The fixture does **not** claim that the second process was spawned by the primary process; it qualifies the Job/pipe lifecycle condition that caused the unbounded drain.\n\nBoth processes are created suspended, token-verified as AppContainer processes, assigned to the same kill-on-close Job before resume, use the existing sanitized environment and three inherited standard handles, and receive no network capability.\n\n## Authority boundary\n\nNo public authority is added. Windows public `process.spawn` remains restricted to the exact SG-000010-qualified `%SystemRoot%\\System32\\whoami.exe` target. Generic executable-registry widening, shell/cmd, PowerShell, caller environment overrides, stdin payloads, network, detached/background execution, public kill, Git mutation, browser/UI automation, elevation, and approval bypass/reuse remain absent.\n''', encoding='utf-8')
+          PY
+          cargo fmt --all
+          git diff --check
+          rm .github/workflows/sg000011-patch.yml
+          git config user.name "Cotra Governance Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: harden descendant post-exit lifecycle"
+          git push origin HEAD:feat/sg-000011-implementation
