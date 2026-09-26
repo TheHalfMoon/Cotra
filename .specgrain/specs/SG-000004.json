@@ -2,7 +2,7 @@
   "id": "SG-000004",
   "title": "Secure MCP Tunnel supervisor and credential isolation",
   "program": "COTRA-P03",
-  "state": "GRAIN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-24",
   "base": "527a5e69e453fa740a754c4f037dbb1b2764c917",
@@ -12,15 +12,7 @@
     "include": ["official tunnel-client process supervision", "runtime key file reference", "secret-free child environment", "loopback ephemeral health endpoint", "local status/doctor"],
     "exclude": ["tunnel reimplementation", "admin tunnel CRUD", "runtime key creation", "ChatGPT live E2E claim", "public inbound listener", "generic process authority"]
   },
-  "invariants": [
-    "CONTROL_PLANE_API_KEY and OPENAI_API_KEY are absent from the tunnel process environment",
-    "The runtime key value is absent from argv and Cotra child environment",
-    "The runtime key file is outside every trusted workspace",
-    "Only the official tunnel-client is launched",
-    "Health binds to 127.0.0.1:0",
-    "Raw HTTP logging is disabled",
-    "Live ChatGPT E2E remains UNPROVEN until exercised with a real tunnel"
-  ],
+  "invariants": ["CONTROL_PLANE_API_KEY and OPENAI_API_KEY are absent from the tunnel process environment", "The runtime key value is absent from argv and Cotra child environment", "The runtime key file is outside every trusted workspace", "Only the official tunnel-client is launched", "Health binds to 127.0.0.1:0", "Raw HTTP logging is disabled", "Live ChatGPT E2E remains UNPROVEN until exercised with a real tunnel"],
   "acceptance": [
     {"id": "A1", "claim": "Launch plan uses control-plane.api-key=file:<path> and contains no secret value."},
     {"id": "A2", "claim": "Secret-like environment variables are stripped before tunnel-client starts."},
