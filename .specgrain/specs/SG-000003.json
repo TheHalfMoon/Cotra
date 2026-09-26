@@ -22,7 +22,14 @@
     "approval": "No change",
     "privileged": "None"
   },
-  "invariants": ["No generic Git command or shell tool is exposed", "Only rev-parse/status/diff/log fixed subcommands execute", "Repository root must resolve inside the trusted workspace", "Global/system Git config, fsmonitor, pager, external diff, textconv, and terminal prompting are disabled", "Git output is bounded and commands time out", "No network Git operation is exposed"],
+  "invariants": [
+    "No generic Git command or shell tool is exposed",
+    "Only rev-parse/status/diff/log fixed subcommands execute",
+    "Repository root must resolve inside the trusted workspace",
+    "Global/system Git config, fsmonitor, pager, external diff, textconv, and terminal prompting are disabled",
+    "Git output is bounded and commands time out",
+    "No network Git operation is exposed"
+  ],
   "acceptance": [
     {"id": "A1", "claim": "Status reports working tree state without mutation."},
     {"id": "A2", "claim": "Diff is bounded and disables external diff/textconv."},
