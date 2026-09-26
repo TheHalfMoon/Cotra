@@ -1,0 +1,105 @@
+{
+  "id": "SG-000012",
+  "title": "Restricted-child protected-state isolation qualification",
+  "program": "COTRA-P05",
+  "state": "GRAIN",
+  "risk": "high",
+  "created": "2026-09-26",
+  "base": "54b5b8ff39fe4188f09950d1db5c42e8823b19a6",
+  "dependencies": [
+    "SG-000004",
+    "SG-000009",
+    "SG-000010",
+    "SG-000011"
+  ],
+  "objective": "Qualify the COTRA-P05 protected-state boundary on native Windows before broader execution authority is introduced: a zero-capability AppContainer child must be unable to read Cotra-owned protected state outside the trusted workspace, must receive no Cotra/tunnel secret material or privileged authority handles, and any failure to prove isolation must block successor authority widening.",
+  "scope": {
+    "include": [
+      "provider-private native Windows protected-state read-denial fixture",
+      "Cotra-owned protected-state sentinel under the parent user's LocalAppData Cotra state boundary",
+      "verification that the restricted child cannot read protected sentinel contents",
+      "verification that Cotra/tunnel secret-like environment variables remain absent from the child environment",
+      "verification that child handle inheritance remains limited to NUL stdin plus dedicated stdout/stderr handles",
+      "verification that the current cotra-mcp to cotrad stdio authority channel is not inherited by process.spawn children",
+      "fail-closed qualification if native Windows permits the protected-state read",
+      "minimal Cotra-owned state ACL hardening if and only if native evidence proves the inherited Windows ACL boundary insufficient",
+      "SG-000009, SG-000009A, SG-000010, and SG-000011 regression coverage"
+    ],
+    "exclude": [
+      "generic executable-registry widening",
+      "additional public process.spawn executable targets",
+      "powershell.run",
+      "raw shell or cmd authority",
+      "named-pipe service-mode IPC introduction",
+      "changing ACLs on user workspaces or arbitrary user-provided files",
+      "process network capability",
+      "caller environment overrides",
+      "stdin payload injection",
+      "background or detached execution",
+      "public process kill authority",
+      "Git mutation",
+      "browser or UI automation",
+      "elevation",
+      "approval bypass or persistent approval reuse"
+    ]
+  },
+  "authority_delta": {
+    "filesystem": "No public filesystem authority. Qualification may harden Cotra-owned protected state only; trusted workspace ACLs and arbitrary user files remain untouched.",
+    "process": "No new public process authority; provider-private isolation qualification only",
+    "network": "None",
+    "browser": "None",
+    "ui_input": "None",
+    "secrets": "No new secret access; this grain proves restricted-child non-access to Cotra-owned protected state and preserves secret-free child environments",
+    "approval": "No change",
+    "privileged": "No new privileged capability"
+  },
+  "invariants": [
+    "Windows public process.spawn remains restricted to the exact SG-000010-qualified System32 whoami.exe target",
+    "A restricted child must not be able to read Cotra-owned protected-state sentinel contents outside the trusted workspace",
+    "A successful process result must never be used as evidence that protected-state isolation exists; isolation requires a dedicated negative-access proof",
+    "Cotra/tunnel secret-like environment variables remain absent from every contained child",
+    "The child inherits only NUL stdin and its dedicated stdout/stderr pipe writers through the explicit handle list",
+    "The cotra-mcp to cotrad authority channel is not an inheritable child authority surface in the current stdio architecture",
+    "If protected-state access unexpectedly succeeds, qualification fails closed and broader process or PowerShell authority must not proceed",
+    "Any ACL repair is limited to Cotra-owned protected state and must not mutate trusted workspace or arbitrary user-file permissions",
+    "No executable-registry, PowerShell, network, background, public kill, Git, browser/UI, elevation, or approval authority is added"
+  ],
+  "acceptance": [
+    {
+      "id": "A1",
+      "claim": "A native Windows provider-private AppContainer fixture attempts to read a Cotra-owned LocalAppData protected-state sentinel and deterministically proves the sentinel contents are inaccessible to the restricted child."
+    },
+    {
+      "id": "A2",
+      "claim": "The fixture remains zero-capability AppContainer-contained, is assigned to the kill-on-close Job before resume, and reaches verified Job quiescence after the negative-access probe."
+    },
+    {
+      "id": "A3",
+      "claim": "Exact tests prove Cotra/tunnel secret-like environment variables are absent and inherited child handles remain limited to the existing three-handle SG-000009 boundary."
+    },
+    {
+      "id": "A4",
+      "claim": "The current request-scoped cotra-mcp to cotrad stdio channel is not passed through PROC_THREAD_ATTRIBUTE_HANDLE_LIST or otherwise exposed as process.spawn child authority."
+    },
+    {
+      "id": "A5",
+      "claim": "If the default Cotra-owned protected-state ACL permits AppContainer read access, the grain hardens only that Cotra-owned state boundary and native Windows requalification proves denial; no workspace or arbitrary-user-file ACL mutation is introduced."
+    },
+    {
+      "id": "A6",
+      "claim": "SG-000009, SG-000009A, SG-000010, and SG-000011 native Windows containment, termination, public-whoami, and descendant-lifecycle regressions remain green."
+    },
+    {
+      "id": "A7",
+      "claim": "Exact-head Windows/Ubuntu Rust, Node, Governance, genuine TypeSafe Jev, Alibaba Open Code Review, and security review gates pass with zero unresolved blocking findings."
+    }
+  ],
+  "review": {
+    "diffcipline": true,
+    "jev_semantic_review": true,
+    "alibaba_open_code_review": "where integrated",
+    "security_review": true,
+    "exact_head_ci": true
+  },
+  "done_when": "Native Windows proves that the restricted process boundary cannot read Cotra-owned protected state or inherit Cotra secret/authority surfaces, any necessary Cotra-owned ACL hardening is merged and requalified, existing process authority does not widen, and implementation receives exact-head plus post-merge verification."
+}
