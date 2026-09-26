@@ -96,7 +96,7 @@ fn platform_prompt(_prompt: &ApprovalPrompt) -> Result<ApprovalDecision, Approva
     ))
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub mod test_support {
     use super::*;
 
