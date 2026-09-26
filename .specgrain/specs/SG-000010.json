@@ -2,10 +2,16 @@
   "id": "SG-000010",
   "title": "Approved bounded argv process.spawn",
   "program": "COTRA-P05",
-  "state": "GRAIN",
+  "state": "CLOSED",
   "risk": "high",
   "created": "2026-09-26",
   "base": "be1e6a28c77d25a8f9f1848c02df290ac74da734",
+  "qualified_head": "248b96c17e3dc387371441ba12b5ee75d41c2495",
+  "implementation_base": "9c1e932d93abd46943e91af1118df0dce5fe35de",
+  "implementation_merge": "388f5de196580d71275a31b84b584f5ac280baec",
+  "pre_merge_ci": "36248970994",
+  "pre_merge_review_gates": "36248969775",
+  "post_merge_ci": "36250111765",
   "dependencies": [
     "SG-000002",
     "SG-000005",
@@ -19,6 +25,7 @@
       "process.spawn/spawn policy authorization",
       "typed MCP process.spawn tool with executable plus argv array",
       "absolute executable validation",
+      "positive Windows executable policy restricted to the exact qualified System32 whoami.exe target",
       "workspace-bound cwd validation",
       "sanitized inherited environment with no caller-provided environment overrides",
       "explicit timeout/stdout/stderr bounds",
@@ -32,9 +39,11 @@
       "native Windows end-to-end qualification"
     ],
     "exclude": [
+      "generic executable-registry authority",
       "raw command strings",
       "cmd.exe or shell interpolation as an API primitive",
       "powershell.run",
+      "direct PowerShell executable authority through process.spawn",
       "caller-provided environment overrides",
       "stdin payload injection",
       "process network capability",
@@ -48,7 +57,7 @@
   },
   "authority_delta": {
     "filesystem": "No new filesystem capability; execution cwd must resolve within the already trusted workspace",
-    "process": "Adds one approved public argv-only process.spawn capability routed through the contained Windows executor",
+    "process": "Adds one approved public argv-only process.spawn capability, positively restricted on Windows to the exact qualified System32 whoami.exe target, routed through the contained Windows executor",
     "network": "None; network_class must be NONE and AppContainer receives zero capabilities",
     "browser": "None",
     "ui_input": "None; only the existing independent local approval surface is used",
@@ -59,6 +68,7 @@
   "invariants": [
     "The MCP interface accepts executable and argv separately and never a shell command string",
     "PowerShell remains a separate denied capability",
+    "Windows public executable authority is a positive allowlist restricted to the exact qualified System32 whoami.exe target in this grain",
     "The executable must resolve to an existing absolute file",
     "The cwd must resolve inside the selected trusted workspace",
     "Caller-provided environment variables are not accepted in this grain",
@@ -69,12 +79,13 @@
     "Timeout or output-limit classification is returned only after verified Job quiescence",
     "Failure to prove termination returns TerminationUnverified",
     "Approval is bound to executable, argv, cwd, limits, stdin policy, network class, workspace, and policy revision",
-    "No background execution or approval reuse is introduced"
+    "No background execution or approval reuse is introduced",
+    "Generic descendant-producing executable authority cannot widen until post-primary-exit drain/lifecycle hardening is separately qualified"
   ],
   "acceptance": [
     {
       "id": "A1",
-      "claim": "Policy authorizes only process.spawn/spawn with a valid bounded argv request and continues denying PowerShell and unknown process operations."
+      "claim": "Policy authorizes only process.spawn/spawn with a valid bounded argv request, positively restricts the Windows executable to the exact qualified fixture, and continues denying PowerShell and unknown process operations."
     },
     {
       "id": "A2",
@@ -86,7 +97,7 @@
     },
     {
       "id": "A4",
-      "claim": "Native Windows exact-head tests execute an approved fixed inbox/system argv fixture through the public daemon/provider path and return bounded stdout/stderr plus exit code with AppContainer identity, pre-resume Job membership, and zero active Job processes verified."
+      "claim": "Native Windows exact-head tests execute the approved System32 whoami.exe argv fixture through the public daemon/provider path and return bounded stdout/stderr plus exit code with AppContainer identity, pre-resume Job membership, and zero active Job processes verified."
     },
     {
       "id": "A5",
@@ -94,7 +105,7 @@
     },
     {
       "id": "A6",
-      "claim": "Tests prove cwd escape, relative/missing executable, NUL argv, non-NONE network class, non-null stdin policy, caller env injection, and over-limit requests fail closed before execution."
+      "claim": "Tests prove cwd escape, relative/missing or non-allowlisted executable authority, shell/PowerShell targets, NUL argv, non-NONE network class, non-null stdin policy, caller env injection, and over-limit requests fail closed before execution."
     },
     {
       "id": "A7",
@@ -108,5 +119,20 @@
     "security_review": true,
     "exact_head_ci": true
   },
-  "done_when": "The approved argv-only process.spawn path is merged with exact-head and post-merge verification, public PowerShell/network/background authority remains absent, and the next P05 unit can address PowerShell or further protected-state hardening without weakening this boundary."
+  "done_when": "The approved argv-only process.spawn path is merged with exact-head and post-merge verification, public PowerShell/network/background authority remains absent, and governance records the evidence without widening executable authority.",
+  "canonical_evidence": {
+    "implementation_pr": 18,
+    "implementation_base": "9c1e932d93abd46943e91af1118df0dce5fe35de",
+    "qualified_head": "248b96c17e3dc387371441ba12b5ee75d41c2495",
+    "pre_merge_ci": "36248970994",
+    "pre_merge_review_gates": "36248969775",
+    "merge_sha": "388f5de196580d71275a31b84b584f5ac280baec",
+    "post_merge_ci": "36250111765",
+    "native_windows": "SUCCESS",
+    "jev": "PASSED: 46/46 hunks, zero findings, zero blocking findings",
+    "ocr": "PASSED: exact-range delegation, 17 files total, 10 reviewable, 7 excluded",
+    "security_review": "PASS on exact qualified head after positive executable-policy repair",
+    "unresolved_review_threads": 0,
+    "authority_boundary": "Windows public process.spawn is restricted to the exact qualified %SystemRoot%\\System32\\whoami.exe target. Generic executable-registry authority, direct PowerShell/shell execution, process network, background execution, and public kill remain absent."
+  }
 }
