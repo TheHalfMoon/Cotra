@@ -1,8 +1,8 @@
 # Cotra Current Canonical Frontier
 
-Status: IMPLEMENTATION
+Status: GOVERNANCE_CLOSEOUT
 Date: 2026-09-26
-Governance snapshot base: f743ca8923756b7d89f009a9994286a27c80245f
+Governance snapshot base: 00cab385bdce43562530646dce84be71e1ddfabd
 Evidence ledger: `.specgrain/canonical-evidence.json`
 
 `Governance snapshot base` records the canonical parent from which this snapshot was authored. It deliberately does not claim the eventual merge SHA of the commit containing this file.
@@ -17,54 +17,36 @@ The machine-readable evidence for every `CLOSED` grain is recorded in `.specgrai
 
 ## Closed canonical grains
 
-SG-000001 through SG-000010 are `CLOSED` and canonical.
+SG-000001 through SG-000010 are `CLOSED` and canonical on the snapshot base.
 
-SG-000010 closeout evidence:
-- qualified implementation head: `248b96c17e3dc387371441ba12b5ee75d41c2495`;
-- implementation merge: `388f5de196580d71275a31b84b584f5ac280baec`;
-- implementation exact-head CI: `36248970994` — SUCCESS;
-- implementation Review Gates: `36248969775` — SUCCESS;
-- implementation post-merge CI: `36250111765` — 5/5 SUCCESS;
-- closeout exact head: `4f001c1e340b8438dc7b71b9fa8b3be8c50e1bf9`;
-- closeout merge: `f743ca8923756b7d89f009a9994286a27c80245f`;
-- closeout exact-head CI: `36250486622` — 5/5 SUCCESS;
-- closeout Review Gates: `36250486619` — genuine Jev 13/13 hunks, zero findings/blocking findings; Alibaba Open Code Review exact-range delegation SUCCESS;
-- closeout post-merge CI: `36250728252` — 5/5 SUCCESS.
+SG-000011 is implemented, exact-head qualified, merged, and post-merge verified. This closeout candidate moves its machine state to `CLOSED` and records its canonical evidence. That state becomes canonically effective only after this governance-only closeout is exact-head qualified, merged normally, and passes post-merge CI.
 
-Canonical public process authority remains narrow:
-- `process.spawn` / `spawn` is argv-first;
-- on Windows, the public executable policy remains positively restricted to the exact qualified `%SystemRoot%\System32\whoami.exe` target;
-- cwd is workspace-bound;
-- caller environment overrides and stdin payloads are absent;
-- timeout/stdout/stderr are bounded;
-- `network_class=NONE` only;
-- every execution requires fresh local approval bound to the normalized plan;
-- execution uses zero-capability AppContainer containment plus pre-resume Job membership and verified termination semantics.
+## SG-000011 implementation evidence
 
-Historical boundary: SG-000004 closed tunnel supervisor/credential isolation only; live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
+- implementation PR: `#21`;
+- implementation base: `57bb970c69f55c7775900f47fe1047c5ff7322f7`;
+- qualified implementation head: `b6ca7106196e3d1c4771f46f311ec22a413eff49`;
+- implementation exact-head CI: `36251790829` — 5/5 SUCCESS;
+- implementation Review Gates: `36251789043` — SUCCESS;
+- genuine TypeSafe Jev: 11/11 hunks, zero findings, zero blocking findings;
+- Alibaba Open Code Review v1.12.9: exact-range delegation SUCCESS, 2 files total, 1 reviewable, 1 excluded security note manually reviewed;
+- implementation merge: `00cab385bdce43562530646dce84be71e1ddfabd`;
+- implementation post-merge CI: `36253841733` — 5/5 SUCCESS, including native Windows;
+- unresolved implementation review threads: 0.
 
-## Active frontier
-
-SG-000011 — Descendant-aware post-exit lifecycle hardening
-
-Branch:
-`feat/sg-000011-descendant-lifecycle`
-
-This is the next lawful COTRA-P05 unit because SG-000010 explicitly left the generic contained executor's post-primary-exit pipe-drain behavior unqualified for arbitrary descendant-producing executables, and the canonical security boundary requires this hardening before executable-registry authority can widen.
-
-SG-000011 must prove, on native Windows:
-- a deterministic provider-private fixture can exit its primary process while a descendant retains inherited stdout/stderr handles without hanging Cotra;
-- post-primary-exit pipe draining is bounded by an explicit internal deadline;
-- active descendants are resolved through the existing Job boundary;
-- if descendants remain active beyond the bounded drain window, the Job is terminated and zero active Job processes are verified;
-- success requires known primary exit, bounded reader terminal state, and Job quiescence;
-- inability to prove termination/quiescence returns `TerminationUnverified` and never a stronger success/timeout/output-limit claim;
-- race precedence across primary exit, EOF, output overflow, timeout, Job termination, and quiescence is deterministic;
+Qualified SG-000011 behavior:
+- post-primary-exit stdout/stderr drain is bounded;
+- a retained-handle descendant fixture cannot hang the contained executor;
+- active Job members beyond the bounded drain window trigger Job termination;
+- zero active Job processes are verified before final success/destructive classification;
+- inability to prove termination, quiescence, or terminal pipe state returns `TerminationUnverified`;
 - SG-000009, SG-000009A, and SG-000010 regressions remain green.
 
-## Authority boundary retained during SG-000011
+## Canonical public process boundary retained
 
-No new public authority is authorized by this grain.
+No public authority widened in SG-000011.
+
+Windows public `process.spawn` remains positively restricted to the exact SG-000010-qualified `%SystemRoot%\System32\whoami.exe` target.
 
 Still denied or absent:
 - generic executable-registry widening;
@@ -82,7 +64,13 @@ Still denied or absent:
 - elevation;
 - approval bypass or persistent approval reuse.
 
-Only after SG-000011 is `CLOSED` may repository truth determine whether the next P05 unit should widen a positive executable registry, qualify bounded PowerShell, or address another protected-state requirement. No such successor authority is granted here.
+Historical boundary: SG-000004 closed tunnel supervisor/credential isolation only; live ChatGPT Secure MCP Tunnel E2E remains UNPROVEN until exercised on a real Windows runtime with a real tunnel ID/runtime credential.
+
+## Active frontier
+
+SG-000011 canonical closeout only.
+
+No successor authority is canonical yet. After this closeout merges and its post-merge CI succeeds, repository truth must determine the next lawful P05 unit from the canonical architecture/delivery plan and remaining P05 exit criteria. The successor may address positive executable-registry widening, bounded PowerShell, protected-state/IPC hardening, or another prerequisite, but no such authority is granted by this closeout.
 
 Architecture: Cotra is standalone; Kernux is not a dependency.
 
